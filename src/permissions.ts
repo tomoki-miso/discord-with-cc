@@ -31,6 +31,9 @@ export const ALLOWED_TOOLS = [
   "Grep",
   "WebFetch",
   "WebSearch",
+  "mcp__claude_ai_Google_Calendar",
+  "mcp__claude_ai_Slack",
+  "mcp__apple-mcp",
 ] as const;
 
 export const DISALLOWED_TOOLS = [

@@ -30,7 +30,10 @@
       "Glob",
       "Grep",
       "WebFetch",
-      "WebSearch"
+      "WebSearch",
+      "mcp__claude_ai_Google_Calendar",
+      "mcp__claude_ai_Slack",
+      "mcp__apple-mcp"
     ],
     "deny": [
       "Read(.env)",
