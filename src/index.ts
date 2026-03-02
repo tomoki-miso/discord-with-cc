@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
 import { createBot } from "./bot.js";
@@ -31,7 +32,7 @@ const discordToken = process.env.DISCORD_TOKEN!;
 const claudeWorkDir = process.env.CLAUDE_WORK_DIR!;
 
 const sessionStore = createSessionStore();
-const toneStore = createToneStore();
+const toneStore = createToneStore({ filePath: join(claudeWorkDir, "tone.json") });
 const handler = createClaudeHandler({ cwd: claudeWorkDir, sessionStore, toneStore });
 
 export function handleToneCommand(

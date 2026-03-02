@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { existsSync, rmSync, readFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createToneStore } from "../tone.js";
 
 describe("createToneStore", () => {
@@ -136,6 +139,88 @@ describe("createToneStore", () => {
 
       // Then: the other store is not affected
       expect(store2.get()).toEqual({ type: "preset", name: "default" });
+    });
+  });
+
+  describe("file persistence", () => {
+    const testDir = join(tmpdir(), `tone-test-${process.pid}`);
+    const testFile = join(testDir, "tone.json");
+
+    afterEach(() => {
+      if (existsSync(testDir)) {
+        rmSync(testDir, { recursive: true });
+      }
+    });
+
+    it("should save tone to file when filePath is provided", () => {
+      // Given: a store with a file path
+      const store = createToneStore({ filePath: testFile });
+
+      // When: setting a preset
+      store.set("casual");
+
+      // Then: the file is written with the tone state
+      expect(existsSync(testFile)).toBe(true);
+      const saved = JSON.parse(readFileSync(testFile, "utf-8"));
+      expect(saved).toEqual({ type: "preset", name: "casual" });
+    });
+
+    it("should load tone from file on creation", () => {
+      // Given: a file with a saved tone
+      mkdirSync(testDir, { recursive: true });
+      const store1 = createToneStore({ filePath: testFile });
+      store1.set("formal");
+
+      // When: creating a new store with the same file path
+      const store2 = createToneStore({ filePath: testFile });
+
+      // Then: it loads the saved tone
+      expect(store2.get()).toEqual({ type: "preset", name: "formal" });
+    });
+
+    it("should persist custom tone across instances", () => {
+      // Given: a store that saves a custom tone
+      const store1 = createToneStore({ filePath: testFile });
+      store1.set("海賊のように話してください");
+
+      // When: creating a new store with the same file path
+      const store2 = createToneStore({ filePath: testFile });
+
+      // Then: the custom tone is restored
+      expect(store2.get()).toEqual({ type: "custom", prompt: "海賊のように話してください" });
+      expect(store2.getSystemPrompt()).toBe("海賊のように話してください");
+    });
+
+    it("should default when file does not exist", () => {
+      // Given: no file exists at the path
+      const store = createToneStore({ filePath: testFile });
+
+      // When/Then: defaults to default preset
+      expect(store.get()).toEqual({ type: "preset", name: "default" });
+    });
+
+    it("should default when file contains invalid JSON", () => {
+      // Given: a file with invalid content
+      mkdirSync(testDir, { recursive: true });
+      const { writeFileSync } = require("node:fs");
+      writeFileSync(testFile, "not json");
+
+      // When: creating a store with that file path
+      const store = createToneStore({ filePath: testFile });
+
+      // Then: defaults to default preset
+      expect(store.get()).toEqual({ type: "preset", name: "default" });
+    });
+
+    it("should not write file when filePath is not provided", () => {
+      // Given: a store without a file path
+      const store = createToneStore();
+
+      // When: setting a tone
+      store.set("casual");
+
+      // Then: no file is created at the test path
+      expect(existsSync(testFile)).toBe(false);
     });
   });
 });

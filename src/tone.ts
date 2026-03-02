@@ -28,18 +28,48 @@ const TONE_PRESETS: Record<string, TonePreset> = {
   },
 };
 
+type ToneState =
+  | { type: "preset"; name: string }
+  | { type: "custom"; prompt: string };
+
 export type ToneStore = {
-  get(): { type: "preset"; name: string } | { type: "custom"; prompt: string };
+  get(): ToneState;
   set(nameOrPrompt: string): void;
   getSystemPrompt(): string;
   listPresets(): string[];
 };
 
-export function createToneStore(): ToneStore {
-  let current: { type: "preset"; name: string } | { type: "custom"; prompt: string } = {
-    type: "preset",
-    name: "default",
-  };
+export type ToneStoreOptions = {
+  filePath?: string;
+};
+
+function loadFromFile(filePath: string): ToneState | undefined {
+  try {
+    const raw = readFileSync(filePath, "utf-8");
+    const data = JSON.parse(raw) as ToneState;
+    if (data.type === "preset" && data.name in TONE_PRESETS) return data;
+    if (data.type === "custom" && typeof data.prompt === "string") return data;
+  } catch {
+    // File doesn't exist or is invalid — use default
+  }
+  return undefined;
+}
+
+function saveToFile(filePath: string, state: ToneState): void {
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n");
+  } catch {
+    // Best-effort: log nothing, don't crash the bot
+  }
+}
+
+export function createToneStore(options: ToneStoreOptions = {}): ToneStore {
+  const defaultState: ToneState = { type: "preset", name: "default" };
+
+  let current: ToneState = options.filePath
+    ? loadFromFile(options.filePath) ?? defaultState
+    : defaultState;
 
   return {
     get() {
@@ -51,6 +81,9 @@ export function createToneStore(): ToneStore {
         current = { type: "preset", name: nameOrPrompt };
       } else {
         current = { type: "custom", prompt: nameOrPrompt };
+      }
+      if (options.filePath) {
+        saveToFile(options.filePath, current);
       }
     },
 
