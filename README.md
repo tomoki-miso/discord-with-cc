@@ -1,6 +1,6 @@
 # discord-claude-code
 
-Discord上でClaude Codeを使えるBot。チャンネルでBotにメンションすると、Claude Agent SDKを通じてメッセージを処理し、応答を返します。チャンネルごとに会話履歴を保持します。
+Discord上でClaude Code / CodeX / Gemini CLIを使えるBot。チャンネルでBotにメンションすると、指定したエージェントへメッセージを転送し、応答を返します。Claudeを選択した場合はチャンネルごとに会話履歴を保持します。
 
 ## セットアップ
 
@@ -26,8 +26,22 @@ cp .env.example .env.dev
 
 | 変数 | 説明 |
 |---|---|
+| 変数 | 説明 |
+|---|---|
 | `DISCORD_TOKEN` | Discordボットトークン |
-| `CLAUDE_WORK_DIR` | Claude SDKの作業ディレクトリ |
+| `AGENT_TYPE` | 使用するエージェント (`claude` / `codex` / `gemini`)。未設定時は `claude` |
+| `AGENT_WORK_DIR` | エージェントが操作する作業ディレクトリ |
+| `CODEX_BIN` | (任意) `codex` CLIのパス。PATH上にある場合は不要 |
+| `GEMINI_BIN` | (任意) `gemini` CLIのパス。PATH上にある場合は不要 |
+| `CLAUDE_WORK_DIR` | (任意) 互換目的の旧名。`AGENT_WORK_DIR` が未設定の場合のみ使用 |
+
+### エージェントの切り替え
+
+- `AGENT_TYPE=claude` … これまで通り Claude Agent SDK を利用します（会話履歴あり）。
+- `AGENT_TYPE=codex` … OpenAI CodeX CLI を `codex exec` の非対話モードで実行します（毎リクエスト stateless）。
+- `AGENT_TYPE=gemini` … Gemini CLI の非対話モードを使います（毎リクエスト stateless）。
+
+CodeX / Gemini 用の CLI が PATH に無い場合は `CODEX_BIN` / `GEMINI_BIN` でフルパスを指定してください。
 
 ### Discordボットの権限
 
@@ -61,18 +75,20 @@ npm test
 
 ```
 Discord message
-  → bot.ts     … @メンション検出、typing表示、応答分割(2000文字制限)
-  → claude.ts  … Claude Agent SDKへストリーミングクエリ、セッション管理
-  → history.ts … チャンネルIDごとのインメモリセッションストア
+  → bot.ts       … @メンション検出、typing表示、応答分割(2000文字制限)
+  → claude.ts / codex.ts / gemini.ts … 各エージェントへの橋渡し
+  → history.ts   … チャンネルIDごとのインメモリセッションストア
 ```
 
 ### モジュール構成
 
 | ファイル | 役割 |
 |---|---|
-| `src/index.ts` | エントリポイント。環境変数の検証、各モジュールの初期化 |
+| `src/index.ts` | エントリポイント。環境変数の検証、各モジュールの初期化、エージェント切り替え |
 | `src/bot.ts` | Discord.jsクライアント。メンション応答、長文メッセージの分割送信 |
 | `src/claude.ts` | Claude Agent SDKのラッパー。ストリーミング応答、セッション再開 |
+| `src/codex.ts` | CodeX CLI の非対話実行ラッパー |
+| `src/gemini.ts` | Gemini CLI の非対話実行ラッパー |
 | `src/history.ts` | Map-basedのセッションストア |
 | `src/permissions.ts` | ツールの許可/拒否リストとMCPサーバー設定 |
 

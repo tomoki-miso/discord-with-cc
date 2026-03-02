@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Discord bot that bridges Discord messaging with Claude AI via the Claude Agent SDK. Users mention the bot in a Discord channel, and it processes the message through the Claude Agent SDK, maintaining conversation history per channel.
+Discord bot that bridges Discord messaging with coding agents (Claude Code via the Claude Agent SDK, OpenAI CodeX CLI, and Gemini CLI). Users mention the bot in a Discord channel, and it forwards the prompt to the configured agent. Claude keeps session history per channel, while CodeX/Gemini run stateless per request.
 
 ## Commands
 
@@ -16,7 +16,7 @@ Discord bot that bridges Discord messaging with Claude AI via the Claude Agent S
 
 ## Environment Variables
 
-Required: `DISCORD_TOKEN`, `CLAUDE_WORK_DIR` (working directory for Claude SDK operations)
+Required: `DISCORD_TOKEN`, `AGENT_WORK_DIR`, `AGENT_TYPE` (`claude`/`codex`/`gemini`, defaults to `claude`). Optional overrides: `CODEX_BIN`, `GEMINI_BIN`, legacy `CLAUDE_WORK_DIR` fallback.
 
 ## Architecture
 
@@ -25,9 +25,11 @@ ES module project (`"type": "module"`). All imports use `.js` extensions (Node16
 **Data flow:** Discord message → `bot.ts` (extract prompt, manage typing indicator) → `claude.ts` (stream SDK query, aggregate result) → bot splits response at 2000-char Discord limit and sends back.
 
 Key modules:
-- `src/index.ts` — Entry point. Validates env vars, wires bot + handler + session store.
+- `src/index.ts` — Entry point. Validates env vars, wires bot + handler + session store, selects the appropriate agent.
 - `src/bot.ts` — Discord.js client. Filters bot messages, responds only to @mentions, splits long responses on newline boundaries.
 - `src/claude.ts` — Wraps `query()` from Claude Agent SDK. Streams responses, manages session resume per channel.
+- `src/codex.ts` — Non-interactive wrapper over `codex exec --full-auto`.
+- `src/gemini.ts` — Non-interactive wrapper over the Gemini CLI.
 - `src/history.ts` — In-memory Map-based session store keyed by Discord channel ID.
 - `src/permissions.ts` — Allowed/disallowed tool lists and MCP server configs. **Must stay in sync with `.claude/settings.json`** (enforced by `claude-settings.test.ts`).
 
