@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(find /Users/misoshiru/Development/plogins -name \"*.mcp.json\" -type f 2>/dev/null | xargs cat 2>/dev/null)"
-    ]
-  }
-}
