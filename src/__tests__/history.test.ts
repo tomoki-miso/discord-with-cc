@@ -59,4 +59,31 @@ describe("createSessionStore", () => {
     expect(store.get("channel-1")).toBe("session-aaa");
     expect(store.get("channel-2")).toBe("session-bbb");
   });
+
+  it("should remove all sessions when clear is called", () => {
+    // Given: a store with multiple sessions
+    const store = createSessionStore();
+    store.set("channel-1", "session-aaa");
+    store.set("channel-2", "session-bbb");
+
+    // When: clearing the store
+    store.clear();
+
+    // Then: all sessions are removed
+    expect(store.get("channel-1")).toBeUndefined();
+    expect(store.get("channel-2")).toBeUndefined();
+  });
+
+  it("should allow setting sessions after clear", () => {
+    // Given: a store that has been cleared
+    const store = createSessionStore();
+    store.set("channel-1", "session-old");
+    store.clear();
+
+    // When: setting a new session
+    store.set("channel-1", "session-new");
+
+    // Then: the new session is retrievable
+    expect(store.get("channel-1")).toBe("session-new");
+  });
 });

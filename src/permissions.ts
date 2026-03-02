@@ -60,4 +60,9 @@ export const MCP_SERVERS: Record<string, McpServerConfig> = {
     command: "npx",
     args: ["-y", "@upstash/context7-mcp"],
   },
+  "apple-mcp": {
+    type: "stdio",
+    command: "bunx",
+    args: ["--no-cache", "apple-mcp@latest"],
+  },
 };

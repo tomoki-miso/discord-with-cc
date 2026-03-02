@@ -17,6 +17,16 @@ function createMockSessionStore() {
     set: vi.fn((channelId: string, sessionId: string) => {
       map.set(channelId, sessionId);
     }),
+    clear: vi.fn(() => map.clear()),
+  };
+}
+
+function createMockToneStore(systemPrompt = "") {
+  return {
+    get: vi.fn().mockReturnValue({ type: "preset" as const, name: "default" }),
+    set: vi.fn(),
+    getSystemPrompt: vi.fn().mockReturnValue(systemPrompt),
+    listPresets: vi.fn().mockReturnValue(["default", "casual", "formal", "funny"]),
   };
 }
 
@@ -88,15 +98,17 @@ function errorResultMessage(errors: string[], sessionId: string): SDKMessage {
 
 describe("createClaudeHandler", () => {
   let sessionStore: ReturnType<typeof createMockSessionStore>;
+  let toneStore: ReturnType<typeof createMockToneStore>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStore = createMockSessionStore();
+    toneStore = createMockToneStore();
   });
 
   it("should call query with prompt and configured cwd", async () => {
     // Given: a handler configured with a specific cwd
-    const handler = createClaudeHandler({ cwd: "/work/dir", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work/dir", sessionStore, toneStore });
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
         systemInitMessage("sess-1"),
@@ -121,7 +133,7 @@ describe("createClaudeHandler", () => {
   describe("permission configuration", () => {
     it("should not use bypassPermissions mode", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -140,7 +152,7 @@ describe("createClaudeHandler", () => {
 
     it("should provide allowedTools as a non-empty array", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -160,7 +172,7 @@ describe("createClaudeHandler", () => {
 
     it("should allow npm and node development commands", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -180,7 +192,7 @@ describe("createClaudeHandler", () => {
 
     it("should allow safe git operations but not push", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -207,7 +219,7 @@ describe("createClaudeHandler", () => {
 
     it("should not allow destructive or network commands", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -237,7 +249,7 @@ describe("createClaudeHandler", () => {
 
     it("should disallow reading .env files", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -257,7 +269,7 @@ describe("createClaudeHandler", () => {
 
     it("should disallow editing and writing .env files", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -279,7 +291,7 @@ describe("createClaudeHandler", () => {
 
     it("should disallow bash access to .env files", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -301,7 +313,7 @@ describe("createClaudeHandler", () => {
 
     it("should disallow destructive and network bash commands", async () => {
       // Given: a handler
-      const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
       mockQuery.mockReturnValue(
         mockAsyncGenerator([
           systemInitMessage("sess-1"),
@@ -324,7 +336,7 @@ describe("createClaudeHandler", () => {
 
   it("should not pass resume when no existing session", async () => {
     // Given: a handler with an empty session store
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
         systemInitMessage("sess-1"),
@@ -342,7 +354,7 @@ describe("createClaudeHandler", () => {
 
   it("should pass resume with session ID when session exists", async () => {
     // Given: a handler with an existing session in the store
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     sessionStore.set("channel-1", "existing-session");
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
@@ -366,7 +378,7 @@ describe("createClaudeHandler", () => {
 
   it("should save session_id from init message", async () => {
     // Given: a handler with an empty session store
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
         systemInitMessage("new-session-id"),
@@ -383,7 +395,7 @@ describe("createClaudeHandler", () => {
 
   it("should return result text on success", async () => {
     // Given: a handler with SDK returning a successful result
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
         systemInitMessage("sess-1"),
@@ -400,7 +412,7 @@ describe("createClaudeHandler", () => {
 
   it("should return error message when SDK returns error result", async () => {
     // Given: a handler with SDK returning an error result
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     mockQuery.mockReturnValue(
       mockAsyncGenerator([
         systemInitMessage("sess-1"),
@@ -416,9 +428,61 @@ describe("createClaudeHandler", () => {
     expect(result).toContain("Something went wrong");
   });
 
+  describe("system prompt injection", () => {
+    it("should always include Discord bot context in systemPrompt", async () => {
+      // Given: a handler with default tone (empty system prompt)
+      const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
+      mockQuery.mockReturnValue(
+        mockAsyncGenerator([
+          systemInitMessage("sess-1"),
+          successResultMessage("OK", "sess-1"),
+        ]),
+      );
+
+      // When: asking a question
+      await handler.ask("prompt", "channel-1");
+
+      // Then: systemPrompt is set with Discord bot context
+      const callArgs = mockQuery.mock.calls[0][0];
+      expect(callArgs.options.systemPrompt).toEqual({
+        type: "preset",
+        preset: "claude_code",
+        append: expect.stringContaining("Discord bot"),
+      });
+    });
+
+    it("should append tone prompt after Discord bot context when tone is set", async () => {
+      // Given: a handler with a non-default tone
+      const customToneStore = createMockToneStore("Be casual and friendly.");
+      const handler = createClaudeHandler({
+        cwd: "/work",
+        sessionStore,
+        toneStore: customToneStore,
+      });
+      mockQuery.mockReturnValue(
+        mockAsyncGenerator([
+          systemInitMessage("sess-1"),
+          successResultMessage("OK", "sess-1"),
+        ]),
+      );
+
+      // When: asking a question
+      await handler.ask("prompt", "channel-1");
+
+      // Then: systemPrompt contains both Discord bot context and tone
+      const callArgs = mockQuery.mock.calls[0][0];
+      expect(callArgs.options.systemPrompt).toEqual({
+        type: "preset",
+        preset: "claude_code",
+        append: expect.stringContaining("Be casual and friendly."),
+      });
+      expect(callArgs.options.systemPrompt.append).toContain("Discord bot");
+    });
+  });
+
   it("should return error message when SDK throws an exception", async () => {
     // Given: a handler with SDK that throws
-    const handler = createClaudeHandler({ cwd: "/work", sessionStore });
+    const handler = createClaudeHandler({ cwd: "/work", sessionStore, toneStore });
     mockQuery.mockImplementation(() => {
       throw new Error("SDK connection failed");
     });

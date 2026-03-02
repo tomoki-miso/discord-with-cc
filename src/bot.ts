@@ -7,6 +7,7 @@ const TYPING_INTERVAL_MS = 5000;
 export type BotConfig = {
   token: string;
   onMessage: (content: string, channelId: string) => Promise<string>;
+  onToneCommand?: (args: string) => string;
 };
 
 export function createBot(config: BotConfig): Client {
@@ -19,7 +20,7 @@ export function createBot(config: BotConfig): Client {
   });
 
   client.on("messageCreate", (message: Message) =>
-    handleMessage(client, config.onMessage, message),
+    handleMessage(client, config, message),
   );
 
   client.login(config.token);
@@ -29,7 +30,7 @@ export function createBot(config: BotConfig): Client {
 
 async function handleMessage(
   client: Client,
-  onMessage: BotConfig["onMessage"],
+  config: BotConfig,
   message: Message,
 ): Promise<void> {
   if (message.author.bot) return;
@@ -38,13 +39,20 @@ async function handleMessage(
   const prompt = message.content.replace(/<@!?\d+>/g, "").trim();
   const channel = message.channel as TextChannel;
 
+  if (prompt.startsWith("!tone") && config.onToneCommand) {
+    const args = prompt.slice("!tone".length).trim();
+    const response = config.onToneCommand(args);
+    await channel.send(response);
+    return;
+  }
+
   const typingInterval = setInterval(() => {
     channel.sendTyping().catch(() => {});
   }, TYPING_INTERVAL_MS);
 
   try {
     channel.sendTyping().catch(() => {});
-    const response = await onMessage(prompt, channel.id);
+    const response = await config.onMessage(prompt, channel.id);
     const chunks = splitMessage(response);
     for (const chunk of chunks) {
       await channel.send(chunk);

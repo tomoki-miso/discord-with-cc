@@ -1,6 +1,7 @@
 export type SessionStore = {
   get(channelId: string): string | undefined;
   set(channelId: string, sessionId: string): void;
+  clear(): void;
 };
 
 export function createSessionStore(): SessionStore {
@@ -12,6 +13,9 @@ export function createSessionStore(): SessionStore {
     },
     set(channelId: string, sessionId: string): void {
       sessions.set(channelId, sessionId);
+    },
+    clear(): void {
+      sessions.clear();
     },
   };
 }

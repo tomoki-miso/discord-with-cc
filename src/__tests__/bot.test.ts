@@ -272,6 +272,74 @@ describe("createBot", () => {
     });
   });
 
+  describe("tone command routing", () => {
+    it("should route !tone command to onToneCommand when provided", async () => {
+      // Given: a bot with onToneCommand handler
+      const onToneCommand = vi.fn().mockReturnValue("Tone info");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !tone casual",
+      });
+
+      // When: the handler processes a !tone message
+      await handler(message);
+
+      // Then: onToneCommand is called with args, onMessage is not called
+      expect(onToneCommand).toHaveBeenCalledWith("casual");
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(message.channel.send).toHaveBeenCalledWith("Tone info");
+    });
+
+    it("should route !tone without args to onToneCommand", async () => {
+      // Given: a bot with onToneCommand handler
+      const onToneCommand = vi.fn().mockReturnValue("Current tone: default");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !tone",
+      });
+
+      // When: the handler processes a !tone message
+      await handler(message);
+
+      // Then: onToneCommand is called with empty string
+      expect(onToneCommand).toHaveBeenCalledWith("");
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it("should route !tone set custom text to onToneCommand", async () => {
+      // Given: a bot with onToneCommand handler
+      const onToneCommand = vi.fn().mockReturnValue("Custom tone set.");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !tone set Be a pirate",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: onToneCommand receives the full args
+      expect(onToneCommand).toHaveBeenCalledWith("set Be a pirate");
+    });
+
+    it("should fall through to onMessage when onToneCommand is not provided", async () => {
+      // Given: a bot without onToneCommand handler
+      createBot({ token: "test-token", onMessage });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !tone casual",
+      });
+
+      // When: the handler processes a !tone message
+      await handler(message);
+
+      // Then: onMessage is called with the full prompt
+      expect(onMessage).toHaveBeenCalledWith("!tone casual", "channel-123");
+    });
+  });
+
   describe("error handling", () => {
     it("should send error message to channel when onMessage rejects", async () => {
       // Given: onMessage that throws an error
