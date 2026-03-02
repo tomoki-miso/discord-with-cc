@@ -1,15 +1,31 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
+
+const { mockCreateClaudeHandler, mockCreateCodexHandler, mockCreateGeminiHandler, mockCreateBot } =
+  vi.hoisted(() => ({
+    mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
+    mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
+    mockCreateGeminiHandler: vi.fn(() => ({ ask: vi.fn() })),
+    mockCreateBot: vi.fn(),
+  }));
 
 vi.mock("../history.js", () => ({
   createSessionStore: vi.fn(() => ({})),
 }));
 
 vi.mock("../claude.js", () => ({
-  createClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
+  createClaudeHandler: mockCreateClaudeHandler,
+}));
+
+vi.mock("../codex.js", () => ({
+  createCodexHandler: mockCreateCodexHandler,
+}));
+
+vi.mock("../gemini.js", () => ({
+  createGeminiHandler: mockCreateGeminiHandler,
 }));
 
 vi.mock("../bot.js", () => ({
-  createBot: vi.fn(),
+  createBot: mockCreateBot,
 }));
 
 vi.mock("../tone.js", () => ({
@@ -21,11 +37,80 @@ vi.mock("../tone.js", () => ({
   })),
 }));
 
-// Set env vars before importing index.ts so top-level code does not call process.exit
-process.env.DISCORD_TOKEN = "test-token";
-process.env.CLAUDE_WORK_DIR = "/tmp/test";
+const MOCKED_ENV_KEYS = [
+  "DISCORD_TOKEN",
+  "AGENT_WORK_DIR",
+  "CLAUDE_WORK_DIR",
+  "AGENT_TYPE",
+  "CODEX_BIN",
+  "GEMINI_BIN",
+];
 
-const { validateEnv, handleToneCommand } = await import("../index.js");
+async function importIndexWithEnv(overrides: Record<string, string | undefined> = {}) {
+  vi.resetModules();
+  vi.clearAllMocks();
+  const backups: Record<string, string | undefined> = {};
+  for (const key of MOCKED_ENV_KEYS) {
+    backups[key] = process.env[key];
+  }
+
+  process.env.DISCORD_TOKEN = overrides.DISCORD_TOKEN ?? backups.DISCORD_TOKEN ?? "test-token";
+  const workDir = overrides.AGENT_WORK_DIR ?? backups.AGENT_WORK_DIR ?? "/tmp/test";
+  process.env.AGENT_WORK_DIR = workDir;
+
+  if (overrides.CLAUDE_WORK_DIR !== undefined) {
+    process.env.CLAUDE_WORK_DIR = overrides.CLAUDE_WORK_DIR;
+  } else if (backups.CLAUDE_WORK_DIR !== undefined) {
+    process.env.CLAUDE_WORK_DIR = backups.CLAUDE_WORK_DIR;
+  } else {
+    delete process.env.CLAUDE_WORK_DIR;
+  }
+
+  if (overrides.AGENT_TYPE !== undefined) {
+    process.env.AGENT_TYPE = overrides.AGENT_TYPE;
+  } else if (backups.AGENT_TYPE !== undefined) {
+    process.env.AGENT_TYPE = backups.AGENT_TYPE;
+  } else {
+    delete process.env.AGENT_TYPE;
+  }
+
+  if (overrides.CODEX_BIN !== undefined) {
+    process.env.CODEX_BIN = overrides.CODEX_BIN;
+  } else if (backups.CODEX_BIN !== undefined) {
+    process.env.CODEX_BIN = backups.CODEX_BIN;
+  } else {
+    delete process.env.CODEX_BIN;
+  }
+
+  if (overrides.GEMINI_BIN !== undefined) {
+    process.env.GEMINI_BIN = overrides.GEMINI_BIN;
+  } else if (backups.GEMINI_BIN !== undefined) {
+    process.env.GEMINI_BIN = backups.GEMINI_BIN;
+  } else {
+    delete process.env.GEMINI_BIN;
+  }
+
+  const mod = await import("../index.js");
+
+  for (const key of MOCKED_ENV_KEYS) {
+    if (backups[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = backups[key]!;
+    }
+  }
+
+  return mod;
+}
+
+let validateEnv: (env: Record<string, string | undefined>) => { missing: { name: string; description: string }[] };
+let handleToneCommand: (args: string, deps: { toneStore: any; sessionStore: any }) => string;
+
+beforeAll(async () => {
+  const mod = await importIndexWithEnv();
+  validateEnv = mod.validateEnv;
+  handleToneCommand = mod.handleToneCommand;
+});
 
 describe("validateEnv", () => {
   it("should report both variables when neither is set", () => {
@@ -38,13 +123,13 @@ describe("validateEnv", () => {
     // Then: both DISCORD_TOKEN and CLAUDE_WORK_DIR are reported as missing
     const names = result.missing.map((v) => v.name);
     expect(names).toContain("DISCORD_TOKEN");
-    expect(names).toContain("CLAUDE_WORK_DIR");
+    expect(names).toContain("AGENT_WORK_DIR");
     expect(result.missing).toHaveLength(2);
   });
 
   it("should report only DISCORD_TOKEN when it is missing", () => {
-    // Given: an environment with only CLAUDE_WORK_DIR set
-    const env = { CLAUDE_WORK_DIR: "/some/path" };
+    // Given: an environment with only AGENT_WORK_DIR set
+    const env = { AGENT_WORK_DIR: "/some/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -63,17 +148,28 @@ describe("validateEnv", () => {
 
     // Then: only CLAUDE_WORK_DIR is reported as missing
     expect(result.missing).toHaveLength(1);
-    expect(result.missing[0].name).toBe("CLAUDE_WORK_DIR");
+    expect(result.missing[0].name).toBe("AGENT_WORK_DIR");
   });
 
   it("should report no missing variables when all are set", () => {
     // Given: an environment with all required variables set
-    const env = { DISCORD_TOKEN: "some-token", CLAUDE_WORK_DIR: "/some/path" };
+    const env = { DISCORD_TOKEN: "some-token", AGENT_WORK_DIR: "/some/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
 
     // Then: no variables are reported as missing
+    expect(result.missing).toHaveLength(0);
+  });
+
+  it("should accept CLAUDE_WORK_DIR for backwards compatibility", () => {
+    // Given: only the legacy variable is set
+    const env = { DISCORD_TOKEN: "token", CLAUDE_WORK_DIR: "/legacy/path" };
+
+    // When: validating the environment
+    const result = validateEnv(env);
+
+    // Then: no missing variables are reported
     expect(result.missing).toHaveLength(0);
   });
 });
@@ -178,5 +274,35 @@ describe("handleToneCommand", () => {
     expect(deps.toneStore.set).toHaveBeenCalledWith("default");
     expect(deps.sessionStore.clear).toHaveBeenCalled();
     expect(result).toContain("デフォルトにリセットしました");
+  });
+});
+
+describe("agent selection", () => {
+  it("uses Claude handler by default", async () => {
+    await importIndexWithEnv();
+    expect(mockCreateClaudeHandler).toHaveBeenCalledTimes(1);
+    expect(mockCreateCodexHandler).not.toHaveBeenCalled();
+    expect(mockCreateGeminiHandler).not.toHaveBeenCalled();
+  });
+
+  it("uses Codex handler when AGENT_TYPE=codex", async () => {
+    await importIndexWithEnv({ AGENT_TYPE: "codex" });
+    expect(mockCreateCodexHandler).toHaveBeenCalledTimes(1);
+    expect(mockCreateClaudeHandler).not.toHaveBeenCalled();
+    expect(mockCreateGeminiHandler).not.toHaveBeenCalled();
+  });
+
+  it("uses Gemini handler when AGENT_TYPE=gemini", async () => {
+    await importIndexWithEnv({ AGENT_TYPE: "gemini" });
+    expect(mockCreateGeminiHandler).toHaveBeenCalledTimes(1);
+    expect(mockCreateClaudeHandler).not.toHaveBeenCalled();
+    expect(mockCreateCodexHandler).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Claude handler for unknown values", async () => {
+    await importIndexWithEnv({ AGENT_TYPE: "unknown" });
+    expect(mockCreateClaudeHandler).toHaveBeenCalledTimes(1);
+    expect(mockCreateCodexHandler).not.toHaveBeenCalled();
+    expect(mockCreateGeminiHandler).not.toHaveBeenCalled();
   });
 });

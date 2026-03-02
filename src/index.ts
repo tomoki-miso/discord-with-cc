@@ -1,20 +1,32 @@
 import { join } from "node:path";
 import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
+import { createCodexHandler } from "./codex.js";
+import { createGeminiHandler } from "./gemini.js";
 import { createBot } from "./bot.js";
 import { createToneStore } from "./tone.js";
+import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHandler } from "./agent.js";
 
-const requiredEnvVars: Record<string, string> = {
-  DISCORD_TOKEN: "Discord Botのトークン",
-  CLAUDE_WORK_DIR: "Claude SDKの作業ディレクトリ",
-};
+export function resolveWorkDir(env: Record<string, string | undefined>): string | undefined {
+  return env.AGENT_WORK_DIR ?? env.CLAUDE_WORK_DIR;
+}
 
 export function validateEnv(env: Record<string, string | undefined>): {
   missing: { name: string; description: string }[];
 } {
-  const missing = Object.entries(requiredEnvVars)
-    .filter(([name]) => !env[name])
-    .map(([name, description]) => ({ name, description }));
+  const missing: { name: string; description: string }[] = [];
+
+  if (!env.DISCORD_TOKEN) {
+    missing.push({ name: "DISCORD_TOKEN", description: "Discord Botのトークン" });
+  }
+
+  if (!resolveWorkDir(env)) {
+    missing.push({
+      name: "AGENT_WORK_DIR",
+      description: "エージェントが操作する作業ディレクトリ (AGENT_WORK_DIR または CLAUDE_WORK_DIR)",
+    });
+  }
+
   return { missing };
 }
 
@@ -23,17 +35,18 @@ const { missing } = validateEnv(process.env);
 if (missing.length > 0) {
   const list = missing.map((v) => `  - ${v.name}: ${v.description}`).join("\n");
   process.stderr.write(
-    `⚠ 環境変数が設定されていません:\n\n${list}\n\n開発環境の場合は .env.dev ファイルに設定してください。\n例:\n  DISCORD_TOKEN=your-discord-bot-token\n  CLAUDE_WORK_DIR=/path/to/work/dir\n`,
+    `⚠ 環境変数が設定されていません:\n\n${list}\n\n開発環境の場合は .env.dev ファイルに設定してください。\n例:\n  DISCORD_TOKEN=your-discord-bot-token\n  AGENT_WORK_DIR=/path/to/work/dir\n  AGENT_TYPE=claude  # 利用可能: ${formatSupportedAgents()}\n`,
   );
   process.exit(1);
 }
 
 const discordToken = process.env.DISCORD_TOKEN!;
-const claudeWorkDir = process.env.CLAUDE_WORK_DIR!;
+const workDir = resolveWorkDir(process.env)!;
+const agentType = normalizeAgentType(process.env.AGENT_TYPE);
 
 const sessionStore = createSessionStore();
-const toneStore = createToneStore({ filePath: join(claudeWorkDir, "tone.json") });
-const handler = createClaudeHandler({ cwd: claudeWorkDir, sessionStore, toneStore });
+const toneStore = createToneStore({ filePath: join(workDir, "tone.json") });
+const handler = createHandlerForAgent(agentType, { cwd: workDir, sessionStore, toneStore });
 
 export function handleToneCommand(
   args: string,
@@ -79,3 +92,21 @@ createBot({
   onMessage: (prompt, channelId) => handler.ask(prompt, channelId),
   onToneCommand: (args) => handleToneCommand(args, { toneStore, sessionStore }),
 });
+
+type HandlerDeps = {
+  cwd: string;
+  sessionStore: ReturnType<typeof createSessionStore>;
+  toneStore: ReturnType<typeof createToneStore>;
+};
+
+function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHandler {
+  switch (agentType) {
+    case "codex":
+      return createCodexHandler(deps);
+    case "gemini":
+      return createGeminiHandler(deps);
+    case "claude":
+    default:
+      return createClaudeHandler(deps);
+  }
+}
