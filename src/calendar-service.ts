@@ -133,6 +133,12 @@ end tell`;
 export async function listEvents(calendarName: string | null, start: Date, end: Date): Promise<EventSummary[]> {
   const startEpoch = Math.floor(start.getTime() / 1000);
   const endEpoch = Math.floor(end.getTime() / 1000);
+  // Timezone-corrected Apple epoch offset:
+  // 978307200 is UTC epoch of 2001-01-01 00:00:00 UTC.
+  // AppleScript date arithmetic uses local time, so subtract the UTC offset
+  // to get the correct local-to-UTC mapping.
+  const tzOffsetSeconds = -new Date().getTimezoneOffset() * 60;
+  const appleEpochOffset = 978307200 - tzOffsetSeconds;
 
   const calFilter = calendarName
     ? `set targetCals to {first calendar whose name is "${escapeAppleScriptString(calendarName)}"}`
@@ -143,7 +149,7 @@ set year of refDate to 2001
 set month of refDate to January
 set day of refDate to 1
 set time of refDate to 0
-set appleEpochOffset to 978307200
+set appleEpochOffset to ${appleEpochOffset}
 
 tell application "Calendar"
     ${calFilter}
@@ -164,7 +170,10 @@ tell application "Calendar"
             end try
         end repeat
     end repeat
-    return resultLines
+    set AppleScript's text item delimiters to linefeed
+    set output to resultLines as text
+    set AppleScript's text item delimiters to ""
+    return output
 end tell`;
 
   const result = await runCommand("osascript", [], { input: script });
