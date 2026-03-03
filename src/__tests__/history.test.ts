@@ -86,4 +86,18 @@ describe("createSessionStore", () => {
     // Then: the new session is retrievable
     expect(store.get("channel-1")).toBe("session-new");
   });
+
+  it("should remove only the specified channel when clearChannel is called", () => {
+    // Given: a store with two channels
+    const store = createSessionStore();
+    store.set("channel-1", "session-aaa");
+    store.set("channel-2", "session-bbb");
+
+    // When: clearing only channel-1
+    store.clearChannel("channel-1");
+
+    // Then: channel-1 is removed, channel-2 remains
+    expect(store.get("channel-1")).toBeUndefined();
+    expect(store.get("channel-2")).toBe("session-bbb");
+  });
 });
