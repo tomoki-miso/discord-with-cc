@@ -1,4 +1,4 @@
-export const SUPPORTED_AGENTS = ["claude", "codex", "gemini"] as const;
+export const SUPPORTED_AGENTS = ["claude", "codex", "gemini", "ollama"] as const;
 
 export type AgentType = (typeof SUPPORTED_AGENTS)[number];
 

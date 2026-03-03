@@ -4,6 +4,7 @@ const {
   mockCreateClaudeHandler,
   mockCreateCodexHandler,
   mockCreateGeminiHandler,
+  mockCreateOllamaHandler,
   mockCreateBot,
   mockCreateCalendarModeStore,
   mockCreateCalendarModeController,
@@ -11,6 +12,7 @@ const {
   mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateGeminiHandler: vi.fn(() => ({ ask: vi.fn() })),
+  mockCreateOllamaHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateBot: vi.fn(),
   mockCreateCalendarModeStore: vi.fn(() => ({
     isActive: vi.fn(),
@@ -41,6 +43,10 @@ vi.mock("../gemini.js", () => ({
   createGeminiHandler: mockCreateGeminiHandler,
 }));
 
+vi.mock("../ollama.js", () => ({
+  createOllamaHandler: mockCreateOllamaHandler,
+}));
+
 vi.mock("../bot.js", () => ({
   createBot: mockCreateBot,
 }));
@@ -69,6 +75,8 @@ const MOCKED_ENV_KEYS = [
   "AGENT_TYPE",
   "CODEX_BIN",
   "GEMINI_BIN",
+  "OLLAMA_URL",
+  "OLLAMA_MODEL",
 ];
 
 async function importIndexWithEnv(overrides: Record<string, string | undefined> = {}) {
@@ -113,6 +121,22 @@ async function importIndexWithEnv(overrides: Record<string, string | undefined> 
     process.env.GEMINI_BIN = backups.GEMINI_BIN;
   } else {
     delete process.env.GEMINI_BIN;
+  }
+
+  if (overrides.OLLAMA_URL !== undefined) {
+    process.env.OLLAMA_URL = overrides.OLLAMA_URL;
+  } else if (backups.OLLAMA_URL !== undefined) {
+    process.env.OLLAMA_URL = backups.OLLAMA_URL;
+  } else {
+    delete process.env.OLLAMA_URL;
+  }
+
+  if (overrides.OLLAMA_MODEL !== undefined) {
+    process.env.OLLAMA_MODEL = overrides.OLLAMA_MODEL;
+  } else if (backups.OLLAMA_MODEL !== undefined) {
+    process.env.OLLAMA_MODEL = backups.OLLAMA_MODEL;
+  } else {
+    delete process.env.OLLAMA_MODEL;
   }
 
   const mod = await import("../index.js");
@@ -196,6 +220,28 @@ describe("validateEnv", () => {
 
     // Then: no missing variables are reported
     expect(result.missing).toHaveLength(0);
+  });
+
+  it("should require OLLAMA_MODEL when AGENT_TYPE=ollama", () => {
+    // Given: ollama agent type without OLLAMA_MODEL
+    const env = { DISCORD_TOKEN: "token", AGENT_WORK_DIR: "/path", AGENT_TYPE: "ollama" };
+
+    // When: validating the environment
+    const result = validateEnv(env);
+
+    // Then: OLLAMA_MODEL is reported as missing
+    expect(result.missing.map((v) => v.name)).toContain("OLLAMA_MODEL");
+  });
+
+  it("should not require OLLAMA_MODEL when AGENT_TYPE is not ollama", () => {
+    // Given: non-ollama agent type without OLLAMA_MODEL
+    const env = { DISCORD_TOKEN: "token", AGENT_WORK_DIR: "/path" };
+
+    // When: validating the environment
+    const result = validateEnv(env);
+
+    // Then: OLLAMA_MODEL is not reported as missing
+    expect(result.missing.map((v) => v.name)).not.toContain("OLLAMA_MODEL");
   });
 });
 
@@ -329,6 +375,12 @@ describe("agent selection", () => {
     expect(mockCreateClaudeHandler).toHaveBeenCalledTimes(1);
     expect(mockCreateCodexHandler).not.toHaveBeenCalled();
     expect(mockCreateGeminiHandler).not.toHaveBeenCalled();
+  });
+
+  it("uses Ollama handler when AGENT_TYPE=ollama", async () => {
+    await importIndexWithEnv({ AGENT_TYPE: "ollama", OLLAMA_MODEL: "llama3.2" });
+    expect(mockCreateOllamaHandler).toHaveBeenCalledTimes(1);
+    expect(mockCreateClaudeHandler).not.toHaveBeenCalled();
   });
 });
 
