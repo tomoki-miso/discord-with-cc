@@ -24,6 +24,7 @@ function createSessionStore() {
     get: vi.fn(),
     set: vi.fn(),
     clear: vi.fn(),
+    clearChannel: vi.fn(),
   };
 }
 

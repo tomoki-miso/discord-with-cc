@@ -18,6 +18,7 @@ function createMockSessionStore() {
       map.set(channelId, sessionId);
     }),
     clear: vi.fn(() => map.clear()),
+    clearChannel: vi.fn((channelId: string) => map.delete(channelId)),
   };
 }
 
@@ -493,5 +494,20 @@ describe("createClaudeHandler", () => {
     // Then: returns an error message string (not throwing)
     expect(typeof result).toBe("string");
     expect(result).toContain("SDK connection failed");
+  });
+});
+
+describe("clearHistory", () => {
+  it("should call clearChannel on sessionStore for the given channelId", () => {
+    // Given: a claude handler with a session store
+    const sessionStore = createMockSessionStore();
+    const toneStore = createMockToneStore();
+    const handler = createClaudeHandler({ cwd: "/test", sessionStore, toneStore });
+
+    // When: clearHistory is called for a channel
+    handler.clearHistory?.("channel-42");
+
+    // Then: sessionStore.clearChannel is called with the channel ID
+    expect(sessionStore.clearChannel).toHaveBeenCalledWith("channel-42");
   });
 });

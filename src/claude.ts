@@ -24,6 +24,9 @@ export function createClaudeHandler(config: ClaudeHandlerConfig): ClaudeHandler 
         return `Error: ${message}`;
       }
     },
+    clearHistory(channelId: string): void {
+      config.sessionStore.clearChannel(channelId);
+    },
   };
 }
 
