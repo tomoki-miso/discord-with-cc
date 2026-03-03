@@ -141,7 +141,7 @@ describe("isBashAllowed", () => {
 // ---- getTools ----
 describe("createOllamaToolManager", () => {
   describe("getTools", () => {
-    it("returns all 7 built-in tools when no MCP servers are configured", async () => {
+    it("returns all 8 built-in tools when no MCP servers are configured", async () => {
       // Given: no MCP servers
       const manager = createOllamaToolManager(makeConfig());
 
@@ -157,7 +157,8 @@ describe("createOllamaToolManager", () => {
       expect(names).toContain("glob_files");
       expect(names).toContain("grep_files");
       expect(names).toContain("web_fetch");
-      expect(tools).toHaveLength(7);
+      expect(names).toContain("web_search");
+      expect(tools).toHaveLength(8);
     });
 
     it("appends MCP tools with mcp__server__name prefix", async () => {
@@ -191,7 +192,7 @@ describe("createOllamaToolManager", () => {
       const tools = await manager.getTools();
 
       // Then: only built-in tools are returned (no MCP tools)
-      expect(tools).toHaveLength(7);
+      expect(tools).toHaveLength(8);
       expect(tools.every((t) => !t.function.name.startsWith("mcp__"))).toBe(true);
     });
 
@@ -337,6 +338,53 @@ describe("createOllamaToolManager", () => {
       expect(result).toBe("# Markdown content");
 
       vi.unstubAllGlobals();
+    });
+  });
+
+  describe("executeTool - web_search", () => {
+    it("returns formatted search results from Tavily", async () => {
+      // Given: TAVILY_API_KEY is set and fetch returns results
+      vi.stubEnv("TAVILY_API_KEY", "test-key");
+      const mockFetch = vi.fn().mockResolvedValue({
+        json: vi.fn().mockResolvedValue({
+          results: [
+            { title: "Result 1", url: "https://example.com/1", content: "Summary one" },
+            { title: "Result 2", url: "https://example.com/2", content: "Summary two" },
+          ],
+        }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const manager = createOllamaToolManager(makeConfig());
+
+      // When
+      const result = await manager.executeTool("web_search", { query: "today news" });
+
+      // Then
+      expect(result).toContain("Result 1");
+      expect(result).toContain("https://example.com/1");
+      expect(result).toContain("Summary one");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.tavily.com/search",
+        expect.objectContaining({ method: "POST" }),
+      );
+
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    });
+
+    it("returns error when TAVILY_API_KEY is not set", async () => {
+      // Given: no API key
+      vi.stubEnv("TAVILY_API_KEY", "");
+      const manager = createOllamaToolManager(makeConfig());
+
+      // When
+      const result = await manager.executeTool("web_search", { query: "test" });
+
+      // Then
+      expect(result).toMatch(/TAVILY_API_KEY/);
+
+      vi.unstubAllEnvs();
     });
   });
 

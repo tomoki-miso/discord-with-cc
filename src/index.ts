@@ -126,9 +126,9 @@ createBot({
     if (calendarStore.isActive(channelId)) {
       const effectiveCalendar = calendarStore.getEffectiveCalendar(channelId);
       const calendarContext = [
-        "[カレンダーモード有効]",
+        "[カレンダーモード有効: カレンダー操作が必要なときだけツールを使ってください。それ以外の質問には通常通り答えてください。]",
         effectiveCalendar ? `デフォルトカレンダー：「${effectiveCalendar}」` : null,
-        "mcp__apple-mcpのカレンダーツールを使って操作してください。",
+        "mcp__apple-mcpのカレンダーツールを活用してください。",
         "",
       ]
         .filter(Boolean)
