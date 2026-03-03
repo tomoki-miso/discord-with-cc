@@ -3,7 +3,7 @@ import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
 import { createCodexHandler } from "./codex.js";
 import { createGeminiHandler } from "./gemini.js";
-import { createOllamaHandler, type OllamaModelOptions } from "./ollama.js";
+import { createOllamaHandler } from "./ollama.js";
 import { createOllamaToolManager } from "./ollama-tools.js";
 import { MCP_SERVERS } from "./permissions.js";
 import { createBot } from "./bot.js";
@@ -13,6 +13,14 @@ import { createCalendarModeController } from "./calendar-mode.js";
 import { createChannelModeStore } from "./channel-store.js";
 import { createChannelModeController } from "./channel-mode.js";
 import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHandler } from "./agent.js";
+import { config, parseOllamaOptions } from "./config.js";
+import { CommandRouter } from "./commands/router.js";
+import { createClearCommand } from "./commands/clear.js";
+import { handleToneCommand as toneCommandHandler, createToneCommand } from "./commands/tone.js";
+import { createCalendarCommand } from "./commands/calendar.js";
+import { createChannelCommand } from "./commands/channel.js";
+
+export { parseOllamaOptions };
 
 export function resolveWorkDir(env: Record<string, string | undefined>): string | undefined {
   return env.AGENT_WORK_DIR ?? env.CLAUDE_WORK_DIR;
@@ -62,7 +70,7 @@ const agentType = normalizeAgentType(process.env.AGENT_TYPE);
 const agentLabel = (() => {
   switch (agentType) {
     case "ollama":
-      return `ollama (${process.env.OLLAMA_MODEL})`;
+      return `ollama (${config.ollama.model})`;
     case "codex":
       return process.env.CODEX_BIN ? `codex (${process.env.CODEX_BIN})` : "codex";
     case "gemini":
@@ -81,44 +89,20 @@ const channelStore = createChannelModeStore({ filePath: join(workDir, "channel-m
 const channelController = createChannelModeController({ store: channelStore });
 const handler = createHandlerForAgent(agentType, { cwd: workDir, sessionStore, toneStore });
 
+// Re-export handleToneCommand for backward compatibility (tested by index.test.ts)
 export function handleToneCommand(
   args: string,
   deps: { toneStore: ReturnType<typeof createToneStore>; sessionStore: ReturnType<typeof createSessionStore> },
 ): string {
-  if (args === "") {
-    const current = deps.toneStore.get();
-    const presets = deps.toneStore.listPresets().join(", ");
-    const currentLabel =
-      current.type === "preset" ? current.name : `カスタム: "${current.prompt}"`;
-    return `現在のトーン: ${currentLabel}\n利用可能なプリセット: ${presets}\n使い方: !tone <プリセット名> | !tone set <テキスト> | !tone reset`;
-  }
-
-  if (args === "reset") {
-    deps.toneStore.set("default");
-    deps.sessionStore.clear();
-    return "トーンをデフォルトにリセットしました。";
-  }
-
-  if (args.startsWith("set ")) {
-    const customPrompt = args.slice("set ".length).trim();
-    if (!customPrompt) {
-      return "カスタムプロンプトを入力してください。使い方: !tone set <テキスト>";
-    }
-    deps.toneStore.set(customPrompt);
-    deps.sessionStore.clear();
-    return "カスタムトーンを設定しました。セッションをクリアしました。";
-  }
-
-  const presetName = args;
-  const presets = deps.toneStore.listPresets();
-  if (!presets.includes(presetName)) {
-    return `不明なプリセット「${presetName}」です。利用可能: ${presets.join(", ")}`;
-  }
-
-  deps.toneStore.set(presetName);
-  deps.sessionStore.clear();
-  return `トーンを「${presetName}」に変更しました。セッションをクリアしました。`;
+  return toneCommandHandler(args, deps);
 }
+
+// Wire commands through CommandRouter
+const commandRouter = new CommandRouter();
+commandRouter.register("!clear", createClearCommand(handler));
+commandRouter.register("!tone", createToneCommand({ toneStore, sessionStore }));
+commandRouter.register("!calendar", createCalendarCommand(calendarController));
+commandRouter.register("!channel", createChannelCommand(channelController));
 
 createBot({
   token: discordToken,
@@ -137,13 +121,13 @@ createBot({
     }
     return handler.ask(prompt, channelId);
   },
-  onToneCommand: (args) => handleToneCommand(args, { toneStore, sessionStore }),
+  onToneCommand: (args) => commandRouter.handle(`!tone ${args}`.trimEnd(), "").then(r => r ?? ""),
   onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
   onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),
   onChannelCommand: (args, channelId) => channelController.handleCommand(args, channelId),
   onClearCommand: (channelId) => {
-    handler.clearHistory?.(channelId);
-    return "このチャンネルのコンテキストをクリアしました。";
+    const clearFn = createClearCommand(handler);
+    return clearFn("", channelId);
   },
   isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
 });
@@ -154,23 +138,6 @@ type HandlerDeps = {
   toneStore: ReturnType<typeof createToneStore>;
 };
 
-export function parseOllamaOptions(env: Record<string, string | undefined>): OllamaModelOptions {
-  const options: OllamaModelOptions = {};
-  if (env.OLLAMA_TEMPERATURE !== undefined) {
-    options.temperature = parseFloat(env.OLLAMA_TEMPERATURE);
-  }
-  if (env.OLLAMA_NUM_CTX !== undefined) {
-    options.num_ctx = parseInt(env.OLLAMA_NUM_CTX, 10);
-  }
-  if (env.OLLAMA_TOP_P !== undefined) {
-    options.top_p = parseFloat(env.OLLAMA_TOP_P);
-  }
-  if (env.OLLAMA_NUM_PREDICT !== undefined) {
-    options.num_predict = parseInt(env.OLLAMA_NUM_PREDICT, 10);
-  }
-  return options;
-}
-
 function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHandler {
   switch (agentType) {
     case "codex":
@@ -178,11 +145,14 @@ function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHa
     case "gemini":
       return createGeminiHandler(deps);
     case "ollama": {
-      const apiUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
-      const model = process.env.OLLAMA_MODEL!;
       const toolManager = createOllamaToolManager({ mcpServers: MCP_SERVERS, cwd: deps.cwd });
-      const options = parseOllamaOptions(process.env);
-      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore, toolManager, options });
+      return createOllamaHandler({
+        apiUrl: config.ollama.apiUrl,
+        model: config.ollama.model,
+        toneStore: deps.toneStore,
+        toolManager,
+        options: config.ollama.options,
+      });
     }
     case "claude":
     default:
