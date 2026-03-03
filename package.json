@@ -10,13 +10,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "discord.js": "^14",
-    "@anthropic-ai/claude-agent-sdk": "latest"
+    "@anthropic-ai/claude-agent-sdk": "latest",
+    "chrono-node": "^2.9.0",
+    "discord.js": "^14"
   },
   "devDependencies": {
-    "typescript": "^5",
     "@types/node": "^22",
     "tsx": "^4",
+    "typescript": "^5",
     "vitest": "^3"
   }
 }
