@@ -3,6 +3,7 @@ import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
 import { createCodexHandler } from "./codex.js";
 import { createGeminiHandler } from "./gemini.js";
+import { createOllamaHandler } from "./ollama.js";
 import { createBot } from "./bot.js";
 import { createToneStore } from "./tone.js";
 import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHandler } from "./agent.js";
@@ -24,6 +25,14 @@ export function validateEnv(env: Record<string, string | undefined>): {
     missing.push({
       name: "AGENT_WORK_DIR",
       description: "エージェントが操作する作業ディレクトリ (AGENT_WORK_DIR または CLAUDE_WORK_DIR)",
+    });
+  }
+
+  const agentTypeForValidation = (env.AGENT_TYPE ?? "").trim().toLowerCase();
+  if (agentTypeForValidation === "ollama" && !env.OLLAMA_MODEL) {
+    missing.push({
+      name: "OLLAMA_MODEL",
+      description: "Ollamaで使用するモデル名（例: llama3.2, mistral）",
     });
   }
 
@@ -105,6 +114,11 @@ function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHa
       return createCodexHandler(deps);
     case "gemini":
       return createGeminiHandler(deps);
+    case "ollama": {
+      const apiUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
+      const model = process.env.OLLAMA_MODEL!;
+      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore });
+    }
     case "claude":
     default:
       return createClaudeHandler(deps);
