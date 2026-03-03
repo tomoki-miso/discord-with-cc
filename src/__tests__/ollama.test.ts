@@ -450,4 +450,31 @@ describe("createOllamaHandler", () => {
       expect(result).toBe("file content");
     });
   });
+
+  describe("clearHistory", () => {
+    it("should remove conversation history for the given channel", async () => {
+      // Given: a handler with history from a previous conversation
+      const toneStore = createMockToneStore();
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("first response"));
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "test-model",
+        toneStore,
+      });
+      await handler.ask("hello", "channel-99");
+
+      // When: clearing history for the channel
+      handler.clearHistory?.("channel-99");
+
+      // Then: next request sends no history (only the new user message)
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("fresh response"));
+      await handler.ask("hi again", "channel-99");
+      const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+      const body = JSON.parse(lastCall[1].body as string);
+      const nonSystemMessages = body.messages.filter((m: { role: string }) => m.role !== "system");
+      // Only the new user message should be present (no prior history)
+      expect(nonSystemMessages).toHaveLength(1);
+      expect(nonSystemMessages[0]).toMatchObject({ role: "user", content: "hi again" });
+    });
+  });
 });

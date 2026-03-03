@@ -148,5 +148,8 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
       historyMap.set(channelId, messages.slice(systemMessages.length));
       return "（最大ツール実行回数に達しました）";
     },
+    clearHistory(channelId: string): void {
+      historyMap.delete(channelId);
+    },
   };
 }
