@@ -307,5 +307,27 @@ describe("createOllamaHandler", () => {
       expect(mockFetch).toHaveBeenCalledTimes(10);
       expect(result).toContain("最大ツール実行回数");
     });
+
+    it("handles flat tool_call format { name, arguments } without function wrapper (qwen3 etc.)", async () => {
+      // Given: response uses flat format instead of { function: { name, arguments } }
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen3.5:9b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch
+        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "foo.ts" }, true))
+        .mockResolvedValueOnce(createSuccessResponse("file content"));
+
+      // When
+      const result = await handler.ask("Read foo.ts", "ch1");
+
+      // Then: executeTool is still called correctly despite the flat format
+      expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "foo.ts" });
+      expect(result).toBe("file content");
+    });
   });
 });
