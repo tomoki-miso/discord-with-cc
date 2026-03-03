@@ -172,6 +172,12 @@ export function extractSearchTimeRange(text: string, now: Date): { start: Date; 
   return { start: startOfDay(now), end: endOfDay(now) };
 }
 
+/** Returns true when the message looks like a general question rather than a calendar operation. */
+function isGeneralQuestion(text: string): boolean {
+  const trimmed = text.trim();
+  return /(?:教えて(?:ください)?|ですか|ますか|でしょうか)[。]?$/.test(trimmed) || /[?？]\s*$/.test(trimmed);
+}
+
 function formatEventList(events: EventSummary[]): string {
   const formatter = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short" });
   return events
@@ -404,6 +410,11 @@ export function createCalendarModeController(options: CalendarModeControllerOpti
       }
 
       // intent === "create"
+      // If the message looks like a general question, let the AI agent handle it
+      if (isGeneralQuestion(content)) {
+        return { handled: false, response: "" };
+      }
+
       const calendarName = options.store.getEffectiveCalendar(channelId);
       if (!calendarName) {
         return {

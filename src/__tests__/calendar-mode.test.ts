@@ -69,6 +69,54 @@ describe("createCalendarModeController", () => {
   });
 });
 
+describe("handleNaturalLanguageInput - general question passthrough", () => {
+  it("returns handled:false for 'today's weather' question", async () => {
+    // Given: calendar mode is active
+    const store = createCalendarModeStore();
+    store.setActive("channel-1", true);
+    store.setChannelDefaultCalendar("channel-1", "自宅");
+    const createEvent = vi.fn();
+    const controller = createCalendarModeController({ store, createEvent });
+
+    // When: user asks a general question
+    const result = await controller.handleNaturalLanguageInput("今日の天気を教えて", "channel-1");
+
+    // Then: not handled → falls through to AI agent
+    expect(result.handled).toBe(false);
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns handled:false for question ending with ですか", async () => {
+    const store = createCalendarModeStore();
+    store.setActive("channel-1", true);
+    const controller = createCalendarModeController({ store });
+
+    const result = await controller.handleNaturalLanguageInput("明日は何曜日ですか", "channel-1");
+    expect(result.handled).toBe(false);
+  });
+
+  it("returns handled:false for question ending with ？", async () => {
+    const store = createCalendarModeStore();
+    store.setActive("channel-1", true);
+    const controller = createCalendarModeController({ store });
+
+    const result = await controller.handleNaturalLanguageInput("今日の気温は？", "channel-1");
+    expect(result.handled).toBe(false);
+  });
+
+  it("still creates event for clear event creation message", async () => {
+    const store = createCalendarModeStore();
+    store.setActive("channel-1", true);
+    store.setChannelDefaultCalendar("channel-1", "自宅");
+    const createEvent = vi.fn().mockResolvedValue({ uid: "uid-1" });
+    const controller = createCalendarModeController({ store, now: () => new Date(FIXED_NOW), createEvent });
+
+    const result = await controller.handleNaturalLanguageInput("明日9時に会議", "channel-1");
+    expect(result.handled).toBe(true);
+    expect(createEvent).toHaveBeenCalled();
+  });
+});
+
 describe("detectIntent", () => {
   const now = new Date(FIXED_NOW);
 
