@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import TurndownService from "turndown";
 
 const execAsync = promisify(exec);
 
@@ -193,6 +194,7 @@ export function isBashAllowed(command: string): boolean {
 }
 
 export function createOllamaToolManager(config: OllamaToolManagerConfig): OllamaToolManager {
+  const td = new TurndownService();
   const mcpClients = new Map<string, Client>();
   let initialized = false;
   let cachedTools: OllamaToolDef[] | null = null;
@@ -322,7 +324,8 @@ export function createOllamaToolManager(config: OllamaToolManagerConfig): Ollama
 
           case "web_fetch": {
             const response = await fetch(args.url as string);
-            return await response.text();
+            const html = await response.text();
+            return td.turndown(html);
           }
 
           default: {
