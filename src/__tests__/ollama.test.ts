@@ -15,27 +15,47 @@ function createMockToneStore(systemPrompt = "") {
   };
 }
 
-function createSuccessResponse(content: string) {
+function createStreamingSuccessResponse(content: string) {
+  const chunks = [
+    JSON.stringify({ message: { role: "assistant", content: content.slice(0, Math.ceil(content.length / 2)) }, done: false }),
+    JSON.stringify({ message: { role: "assistant", content: content.slice(Math.ceil(content.length / 2)) }, done: false }),
+    JSON.stringify({ message: { role: "assistant", content: "" }, done: true }),
+  ].join("\n");
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(chunks);
   return {
     ok: true,
-    json: vi.fn().mockResolvedValue({
-      message: { role: "assistant", content },
-      done: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoded);
+        controller.close();
+      },
     }),
     text: vi.fn(),
   };
 }
 
-function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
-  return {
-    ok: true,
-    json: vi.fn().mockResolvedValue({
+function createStreamingToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
+  const chunks = [
+    JSON.stringify({
       message: {
         role: "assistant",
         content: "",
         tool_calls: [{ function: { name: toolName, arguments: toolArgs } }],
       },
       done: false,
+    }),
+    JSON.stringify({ message: { role: "assistant", content: "" }, done: true }),
+  ].join("\n");
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(chunks);
+  return {
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoded);
+        controller.close();
+      },
     }),
     text: vi.fn(),
   };
@@ -72,7 +92,7 @@ describe("createOllamaHandler", () => {
         model: "llama3.2",
         toneStore,
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("Hello from Ollama!"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("Hello from Ollama!"));
 
       // When: asking a question
       const result = await handler.ask("Hello", "ch1");
@@ -90,8 +110,8 @@ describe("createOllamaHandler", () => {
         toneStore,
       });
       mockFetch
-        .mockResolvedValueOnce(createSuccessResponse("First response"))
-        .mockResolvedValueOnce(createSuccessResponse("Second response"));
+        .mockResolvedValueOnce(createStreamingSuccessResponse("First response"))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("Second response"));
 
       // When: asking two questions in the same channel
       await handler.ask("First question", "ch1");
@@ -114,8 +134,8 @@ describe("createOllamaHandler", () => {
         toneStore,
       });
       mockFetch
-        .mockResolvedValueOnce(createSuccessResponse("Channel A response"))
-        .mockResolvedValueOnce(createSuccessResponse("Channel B response"));
+        .mockResolvedValueOnce(createStreamingSuccessResponse("Channel A response"))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("Channel B response"));
 
       // When: asking in two different channels
       await handler.ask("Question in A", "ch-a");
@@ -136,7 +156,7 @@ describe("createOllamaHandler", () => {
         model: "llama3.2",
         toneStore,
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("response"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("response"));
 
       // When: asking a question
       await handler.ask("Hello", "ch1");
@@ -156,8 +176,8 @@ describe("createOllamaHandler", () => {
         toneStore,
       });
       mockFetch
-        .mockResolvedValueOnce(createSuccessResponse("First response"))
-        .mockResolvedValueOnce(createSuccessResponse("Second response"));
+        .mockResolvedValueOnce(createStreamingSuccessResponse("First response"))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("Second response"));
 
       // When: asking two questions
       await handler.ask("First", "ch1");
@@ -209,7 +229,7 @@ describe("createOllamaHandler", () => {
         toneStore,
         toolManager,
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("done"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("done"));
 
       // When
       await handler.ask("Read a file", "ch1");
@@ -229,7 +249,7 @@ describe("createOllamaHandler", () => {
         model: "llama3.2",
         toneStore,
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("done"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("done"));
 
       // When
       await handler.ask("Hello", "ch1");
@@ -250,8 +270,8 @@ describe("createOllamaHandler", () => {
         toolManager,
       });
       mockFetch
-        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "src/foo.ts" }))
-        .mockResolvedValueOnce(createSuccessResponse("Here is the content"));
+        .mockResolvedValueOnce(createStreamingToolCallResponse("read_file", { path: "src/foo.ts" }))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("Here is the content"));
 
       // When
       const result = await handler.ask("Read src/foo.ts", "ch1");
@@ -274,8 +294,8 @@ describe("createOllamaHandler", () => {
         toolManager,
       });
       mockFetch
-        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "foo.ts" }))
-        .mockResolvedValueOnce(createSuccessResponse("The file says: file content here"));
+        .mockResolvedValueOnce(createStreamingToolCallResponse("read_file", { path: "foo.ts" }))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("The file says: file content here"));
 
       // When
       await handler.ask("Read foo.ts", "ch1");
@@ -298,8 +318,8 @@ describe("createOllamaHandler", () => {
         toneStore,
         toolManager,
       });
-      // Always return a tool call response
-      mockFetch.mockResolvedValue(createToolCallResponse("read_file", { path: "a.ts" }));
+      // Always return a new tool call response (ReadableStream can only be read once)
+      mockFetch.mockImplementation(() => Promise.resolve(createStreamingToolCallResponse("read_file", { path: "a.ts" })));
 
       // When
       const result = await handler.ask("Keep looping", "ch1");
@@ -318,7 +338,7 @@ describe("createOllamaHandler", () => {
         toneStore,
         options: { temperature: 0.5, num_ctx: 2048, top_p: 0.9, num_predict: 512 },
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("response"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("response"));
 
       // When
       await handler.ask("Hello", "ch1");
@@ -336,7 +356,7 @@ describe("createOllamaHandler", () => {
         model: "llama3.2",
         toneStore,
       });
-      mockFetch.mockResolvedValueOnce(createSuccessResponse("response"));
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("response"));
 
       // When
       await handler.ask("Hello", "ch1");
@@ -344,6 +364,65 @@ describe("createOllamaHandler", () => {
       // Then: options key is absent from the request body
       const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(body.options).toBeUndefined();
+    });
+  });
+
+  describe("streaming responses", () => {
+    it("aggregates streamed text chunks into a single response", async () => {
+      // Given: a streaming response with two content chunks
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+      });
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("Hello World"));
+
+      // When
+      const result = await handler.ask("Hi", "ch1");
+
+      // Then: full text is returned
+      expect(result).toBe("Hello World");
+    });
+
+    it("sends stream: true in the request body", async () => {
+      // Given
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+      });
+      mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("ok"));
+
+      // When
+      await handler.ask("test", "ch1");
+
+      // Then: stream is true
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.stream).toBe(true);
+    });
+
+    it("handles tool calls in streamed response", async () => {
+      // Given
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch
+        .mockResolvedValueOnce(createStreamingToolCallResponse("read_file", { path: "foo.ts" }))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("file content"));
+
+      // When
+      const result = await handler.ask("Read foo.ts", "ch1");
+
+      // Then
+      expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "foo.ts" });
+      expect(result).toBe("file content");
     });
   });
 });

@@ -29,6 +29,39 @@ export type OllamaHandlerConfig = {
 
 const MAX_TOOL_ITERATIONS = 10;
 
+async function readStreamingResponse(response: Response): Promise<{
+  content: string;
+  tool_calls?: OllamaToolCall[];
+}> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let tool_calls: OllamaToolCall[] | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const chunk = JSON.parse(trimmed) as OllamaApiResponse;
+      if (chunk.message.content) {
+        content += chunk.message.content;
+      }
+      const msg = chunk.message as Extract<OllamaMessage, { role: "assistant" }>;
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        tool_calls = msg.tool_calls;
+      }
+    }
+  }
+
+  return { content, tool_calls };
+}
+
 export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
   const historyMap = new Map<string, OllamaMessage[]>();
 
@@ -54,7 +87,7 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
         const body: Record<string, unknown> = {
           model: config.model,
           messages,
-          stream: false,
+          stream: true,
         };
         if (tools.length > 0) {
           body.tools = tools;
@@ -74,8 +107,12 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
           throw new Error(`Ollama API error ${response.status}: ${errorText}`);
         }
 
-        const data = (await response.json()) as OllamaApiResponse;
-        const assistantMessage = data.message as Extract<OllamaMessage, { role: "assistant" }>;
+        const { content, tool_calls } = await readStreamingResponse(response);
+        const assistantMessage: Extract<OllamaMessage, { role: "assistant" }> = {
+          role: "assistant",
+          content,
+          ...(tool_calls ? { tool_calls } : {}),
+        };
 
         if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
           // No tool calls — save history and return the text response
