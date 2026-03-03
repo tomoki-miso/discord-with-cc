@@ -122,7 +122,21 @@ export function handleToneCommand(
 
 createBot({
   token: discordToken,
-  onMessage: (prompt, channelId) => handler.ask(prompt, channelId),
+  onMessage: (prompt, channelId) => {
+    if (calendarStore.isActive(channelId)) {
+      const effectiveCalendar = calendarStore.getEffectiveCalendar(channelId);
+      const calendarContext = [
+        "[カレンダーモード有効]",
+        effectiveCalendar ? `デフォルトカレンダー：「${effectiveCalendar}」` : null,
+        "mcp__apple-mcpのカレンダーツールを使って操作してください。",
+        "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      return handler.ask(`${calendarContext}\n${prompt}`, channelId);
+    }
+    return handler.ask(prompt, channelId);
+  },
   onToneCommand: (args) => handleToneCommand(args, { toneStore, sessionStore }),
   onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
   onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),

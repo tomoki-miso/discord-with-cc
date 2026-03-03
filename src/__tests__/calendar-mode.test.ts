@@ -1,11 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createCalendarModeController, detectIntent, extractSearchQuery } from "../calendar-mode.js";
+import { describe, it, expect } from "vitest";
+import { createCalendarModeController } from "../calendar-mode.js";
 import { createCalendarModeStore } from "../calendar-store.js";
-import type { EventSummary } from "../calendar-service.js";
 
-const FIXED_NOW = new Date("2026-03-02T00:00:00+09:00");
-
-describe("createCalendarModeController", () => {
+describe("createCalendarModeController - handleCommand", () => {
   it("handles activation commands", async () => {
     const store = createCalendarModeStore();
     const controller = createCalendarModeController({ store });
@@ -15,304 +12,118 @@ describe("createCalendarModeController", () => {
     expect(store.isActive("channel-1")).toBe(true);
   });
 
-  it("requires default calendar before adding events", async () => {
+  it("handles deactivation commands", async () => {
     const store = createCalendarModeStore();
     store.setActive("channel-1", true);
     const controller = createCalendarModeController({ store });
 
-    const result = await controller.handleNaturalLanguageInput("明日8時会議", "channel-1");
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("デフォルトのカレンダー");
+    const message = await controller.handleCommand("off", "channel-1");
+    expect(message).toContain("終了しました");
+    expect(store.isActive("channel-1")).toBe(false);
   });
 
-  it("creates events when configured", async () => {
+  it("returns status message", async () => {
     const store = createCalendarModeStore();
     store.setActive("channel-1", true);
     store.setChannelDefaultCalendar("channel-1", "自宅");
+    const controller = createCalendarModeController({ store });
 
-    const createEvent = vi.fn().mockResolvedValue({ uid: "UID-1" });
-    const controller = createCalendarModeController({
-      store,
-      now: () => new Date(FIXED_NOW),
-      createEvent,
-    });
+    const message = await controller.handleCommand("status", "channel-1");
+    expect(message).toContain("ON");
+    expect(message).toContain("自宅");
+  });
 
+  it("sets channel default calendar", async () => {
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    const message = await controller.handleCommand("default 仕事", "channel-1");
+    expect(message).toContain("仕事");
+    expect(store.getChannelDefaultCalendar("channel-1")).toBe("仕事");
+  });
+
+  it("sets global default calendar", async () => {
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    const message = await controller.handleCommand("default-global 共有", "channel-1");
+    expect(message).toContain("共有");
+    expect(store.getGlobalDefaultCalendar()).toBe("共有");
+  });
+
+  it("clears channel default calendar", async () => {
+    const store = createCalendarModeStore();
+    store.setChannelDefaultCalendar("channel-1", "自宅");
+    const controller = createCalendarModeController({ store });
+
+    await controller.handleCommand("clear-default", "channel-1");
+    expect(store.getChannelDefaultCalendar("channel-1")).toBeUndefined();
+  });
+
+  it("returns help text when no args", async () => {
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    const message = await controller.handleCommand("", "channel-1");
+    expect(message).toContain("!calendar on");
+    expect(message).toContain("!calendar off");
+  });
+
+  it("returns help text for help command", async () => {
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    const message = await controller.handleCommand("help", "channel-1");
+    expect(message).toContain("!calendar on");
+  });
+
+  it("returns error for unknown subcommand", async () => {
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    const message = await controller.handleCommand("unknown", "channel-1");
+    expect(message).toContain("不明なサブコマンド");
+  });
+});
+
+describe("createCalendarModeController - handleNaturalLanguageInput", () => {
+  it("returns handled: false when calendar mode is OFF", async () => {
+    // Given
+    const store = createCalendarModeStore();
+    const controller = createCalendarModeController({ store });
+
+    // When
     const result = await controller.handleNaturalLanguageInput("明日8時に会議", "channel-1");
 
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("UID-1");
-    expect(createEvent).toHaveBeenCalled();
-    const args = createEvent.mock.calls[0][0];
-    expect(args.calendarName).toBe("自宅");
-    expect(args.title).toBe("会議");
+    // Then
+    expect(result.handled).toBe(false);
+    expect(result.response).toBe("");
   });
 
-  it("passes location and description metadata", async () => {
-    const store = createCalendarModeStore();
-    store.setActive("channel-1", true);
-    store.setChannelDefaultCalendar("channel-1", "自宅");
-
-    const createEvent = vi.fn().mockResolvedValue({ uid: "UID-2" });
-    const controller = createCalendarModeController({
-      store,
-      now: () => new Date(FIXED_NOW),
-      createEvent,
-    });
-
-    const message = `明日10時 おやつ\n場所: 東京都千代田区1-1\nhttps://example.com/menu\nメモ: スイーツを予約`;
-    await controller.handleNaturalLanguageInput(message, "channel-1");
-
-    const args = createEvent.mock.calls[0][0];
-    expect(args.location).toBe("東京都千代田区1-1");
-    expect(args.description).toContain("https://example.com/menu");
-    expect(args.description).toContain("スイーツを予約");
-  });
-});
-
-describe("detectIntent", () => {
-  const now = new Date(FIXED_NOW);
-
-  it("detects list_calendars intent in Japanese", () => {
-    expect(detectIntent("カレンダーの一覧を見せて", now)).toBe("list_calendars");
-    expect(detectIntent("カレンダーを表示して", now)).toBe("list_calendars");
-    expect(detectIntent("カレンダーリストを教えて", now)).toBe("list_calendars");
-  });
-
-  it("detects list_calendars intent in English", () => {
-    expect(detectIntent("list calendars", now)).toBe("list_calendars");
-    expect(detectIntent("show calendars", now)).toBe("list_calendars");
-  });
-
-  it("detects list_events intent for schedule queries", () => {
-    expect(detectIntent("今日の予定を見せて", now)).toBe("list_events");
-    expect(detectIntent("今週のスケジュールを確認したい", now)).toBe("list_events");
-    expect(detectIntent("来週の予定を教えて", now)).toBe("list_events");
-  });
-
-  it("detects delete intent in Japanese", () => {
-    expect(detectIntent("明日の会議を削除して", now)).toBe("delete");
-    expect(detectIntent("予定をキャンセルしたい", now)).toBe("delete");
-  });
-
-  it("detects delete intent in English", () => {
-    expect(detectIntent("delete the meeting", now)).toBe("delete");
-    expect(detectIntent("remove this event", now)).toBe("delete");
-  });
-
-  it("detects update intent in Japanese", () => {
-    expect(detectIntent("会議の時間を変更したい", now)).toBe("update");
-    expect(detectIntent("予定を来週に移動して", now)).toBe("update");
-    expect(detectIntent("リスケして", now)).toBe("update");
-  });
-
-  it("detects update intent in English", () => {
-    expect(detectIntent("reschedule the meeting", now)).toBe("update");
-    expect(detectIntent("change the event", now)).toBe("update");
-  });
-
-  it("falls back to create intent", () => {
-    expect(detectIntent("明日9時に会議", now)).toBe("create");
-    expect(detectIntent("来週月曜10時からランチ", now)).toBe("create");
-  });
-});
-
-describe("extractSearchQuery", () => {
-  it("extracts keyword before deletion verb", () => {
-    expect(extractSearchQuery("明日の会議を削除して")).toBe("明日の会議");
-    expect(extractSearchQuery("予定をキャンセルして")).toBe("予定");
-  });
-
-  it("returns cleaned text when no verb pattern matches", () => {
-    const result = extractSearchQuery("会議");
-    expect(result).toBeTruthy();
-  });
-});
-
-describe("handleNaturalLanguageInput - list_calendars", () => {
-  it("returns calendar names in response", async () => {
+  it("returns handled: false when calendar mode is ON (delegates to Claude via onMessage)", async () => {
     // Given
     const store = createCalendarModeStore();
     store.setActive("channel-1", true);
-    const listCalendarsImpl = vi.fn().mockResolvedValue(["自宅", "仕事", "家族"]);
-    const controller = createCalendarModeController({ store, listCalendarsImpl });
+    const controller = createCalendarModeController({ store });
 
     // When
-    const result = await controller.handleNaturalLanguageInput("カレンダーの一覧を見せて", "channel-1");
+    const result = await controller.handleNaturalLanguageInput("明日8時に会議", "channel-1");
 
-    // Then
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("自宅");
-    expect(result.response).toContain("仕事");
-    expect(result.response).toContain("家族");
+    // Then: Claudeに委ねるため handled: false を返す
+    expect(result.handled).toBe(false);
+    expect(result.response).toBe("");
   });
-});
 
-describe("handleNaturalLanguageInput - list_events", () => {
-  it("returns event titles in response", async () => {
+  it("returns handled: false for any message when calendar mode is ON", async () => {
     // Given
     const store = createCalendarModeStore();
     store.setActive("channel-1", true);
-    store.setChannelDefaultCalendar("channel-1", "自宅");
-    const mockEvents: EventSummary[] = [
-      { uid: "1", title: "朝の会議", start: new Date(FIXED_NOW), end: new Date(FIXED_NOW), calendarName: "自宅" },
-      { uid: "2", title: "ランチ", start: new Date(FIXED_NOW), end: new Date(FIXED_NOW), calendarName: "自宅" },
-    ];
-    const listEventsImpl = vi.fn().mockResolvedValue(mockEvents);
-    const controller = createCalendarModeController({ store, now: () => new Date(FIXED_NOW), listEventsImpl });
+    const controller = createCalendarModeController({ store });
 
-    // When
-    const result = await controller.handleNaturalLanguageInput("今日の予定を見せて", "channel-1");
-
-    // Then
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("朝の会議");
-    expect(result.response).toContain("ランチ");
-  });
-});
-
-describe("handleNaturalLanguageInput - delete 3ターンフロー", () => {
-  let store: ReturnType<typeof createCalendarModeStore>;
-  let listEventsImpl: ReturnType<typeof vi.fn>;
-  let deleteEventImpl: ReturnType<typeof vi.fn>;
-
-  const mockEvents: EventSummary[] = [
-    { uid: "uid-1", title: "チームミーティング", start: new Date(FIXED_NOW), end: new Date(FIXED_NOW), calendarName: "仕事" },
-    { uid: "uid-2", title: "会議", start: new Date(FIXED_NOW), end: new Date(FIXED_NOW), calendarName: "仕事" },
-  ];
-
-  beforeEach(() => {
-    store = createCalendarModeStore();
-    store.setActive("channel-1", true);
-    store.setChannelDefaultCalendar("channel-1", "仕事");
-    listEventsImpl = vi.fn().mockResolvedValue(mockEvents);
-    deleteEventImpl = vi.fn().mockResolvedValue(undefined);
-  });
-
-  it("turn 1: shows candidate list", async () => {
-    // Given
-    const controller = createCalendarModeController({
-      store,
-      now: () => new Date(FIXED_NOW),
-      listEventsImpl,
-      deleteEventImpl,
-    });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("明日の予定を削除して", "channel-1");
-
-    // Then
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("1.");
-    expect(result.response).toContain("2.");
-  });
-
-  it("turn 2: number selection leads to confirmation prompt", async () => {
-    // Given: pending select_candidate is already set
-    store.setPendingOperation("channel-1", {
-      type: "select_candidate",
-      opType: "delete",
-      candidates: mockEvents,
-    });
-    const controller = createCalendarModeController({ store, deleteEventImpl });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("2", "channel-1");
-
-    // Then
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("削除しますか");
-    expect(store.getPendingOperation("channel-1")?.type).toBe("confirm_delete");
-  });
-
-  it("turn 3: 'yes' deletes event and clears pending", async () => {
-    // Given: pending confirm_delete is already set
-    store.setPendingOperation("channel-1", {
-      type: "confirm_delete",
-      selectedEvent: mockEvents[1],
-    });
-    const controller = createCalendarModeController({ store, deleteEventImpl });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("yes", "channel-1");
-
-    // Then
-    expect(deleteEventImpl).toHaveBeenCalledOnce();
-    expect(deleteEventImpl).toHaveBeenCalledWith("仕事", "uid-2");
-    expect(result.response).toContain("削除しました");
-    expect(store.getPendingOperation("channel-1")).toBeUndefined();
-  });
-
-  it("'no' cancels deletion without calling deleteEventImpl", async () => {
-    // Given
-    store.setPendingOperation("channel-1", {
-      type: "confirm_delete",
-      selectedEvent: mockEvents[0],
-    });
-    const controller = createCalendarModeController({ store, deleteEventImpl });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("no", "channel-1");
-
-    // Then
-    expect(deleteEventImpl).not.toHaveBeenCalled();
-    expect(result.response).toContain("キャンセル");
-    expect(store.getPendingOperation("channel-1")).toBeUndefined();
-  });
-});
-
-describe("handleNaturalLanguageInput - update 2ターンフロー（候補1件）", () => {
-  it("turn 1: 1 candidate leads directly to confirm_update", async () => {
-    // Given
-    const store = createCalendarModeStore();
-    store.setActive("channel-1", true);
-    store.setChannelDefaultCalendar("channel-1", "自宅");
-
-    const singleEvent: EventSummary[] = [
-      { uid: "uid-1", title: "会議", start: new Date(FIXED_NOW), end: new Date(FIXED_NOW), calendarName: "自宅" },
-    ];
-    const listEventsImpl = vi.fn().mockResolvedValue(singleEvent);
-    const updateEventImpl = vi.fn().mockResolvedValue(undefined);
-    const controller = createCalendarModeController({
-      store,
-      now: () => new Date(FIXED_NOW),
-      listEventsImpl,
-      updateEventImpl,
-    });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("明日の会議を来週月曜に変更して", "channel-1");
-
-    // Then
-    expect(result.handled).toBe(true);
-    expect(result.response).toContain("更新しますか");
-    expect(store.getPendingOperation("channel-1")?.type).toBe("confirm_update");
-  });
-
-  it("turn 2: 'yes' updates event and clears pending", async () => {
-    // Given
-    const store = createCalendarModeStore();
-    store.setActive("channel-1", true);
-
-    const targetEvent: EventSummary = {
-      uid: "uid-1",
-      title: "会議",
-      start: new Date(FIXED_NOW),
-      end: new Date(FIXED_NOW),
-      calendarName: "自宅",
-    };
-    const updateData = { start: new Date("2026-03-09T10:00:00+09:00"), end: new Date("2026-03-09T11:00:00+09:00") };
-    store.setPendingOperation("channel-1", { type: "confirm_update", selectedEvent: targetEvent, updateData });
-
-    const updateEventImpl = vi.fn().mockResolvedValue(undefined);
-    const controller = createCalendarModeController({ store, updateEventImpl });
-
-    // When
-    const result = await controller.handleNaturalLanguageInput("yes", "channel-1");
-
-    // Then
-    expect(updateEventImpl).toHaveBeenCalledOnce();
-    expect(updateEventImpl).toHaveBeenCalledWith("自宅", "uid-1", updateData);
-    expect(result.response).toContain("更新しました");
-    expect(store.getPendingOperation("channel-1")).toBeUndefined();
+    // When / Then
+    for (const msg of ["カレンダーの一覧を見せて", "今日の予定", "会議を削除して", "予定を変更して"]) {
+      const result = await controller.handleNaturalLanguageInput(msg, "channel-1");
+      expect(result.handled).toBe(false);
+    }
   });
 });
