@@ -1,0 +1,6 @@
+FROM qwen3.5:9b
+
+SYSTEM "必ず日本語で返答してください。英語のデータや情報を参照しても、返答は必ず日本語にしてください。You MUST always respond in Japanese only."
+
+PARAMETER temperature 0.3
+PARAMETER num_ctx 8192
