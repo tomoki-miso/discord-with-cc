@@ -132,6 +132,41 @@ describe("createBot", () => {
       // Then: onMessage is not called
       expect(onMessage).not.toHaveBeenCalled();
     });
+
+    it("should process messages without mention when channel is always-on", async () => {
+      // Given: a bot with isAlwaysOnChannel returning true for the channel
+      const isAlwaysOnChannel = vi.fn().mockReturnValue(true);
+      createBot({ token: "test-token", onMessage, isAlwaysOnChannel });
+      const handler = getMessageCreateHandler();
+      const noMentionMessage = createMockMessage({
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        content: "hello without mention",
+      });
+
+      // When: the handler processes the message
+      await handler(noMentionMessage);
+
+      // Then: onMessage is called with the full content (no mention stripping)
+      expect(onMessage).toHaveBeenCalledWith("hello without mention", "channel-123");
+    });
+
+    it("should still ignore bot messages on always-on channels", async () => {
+      // Given: a bot with always-on channel but message from a bot
+      const isAlwaysOnChannel = vi.fn().mockReturnValue(true);
+      createBot({ token: "test-token", onMessage, isAlwaysOnChannel });
+      const handler = getMessageCreateHandler();
+      const botMessage = createMockMessage({
+        author: { bot: true },
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        content: "bot message",
+      });
+
+      // When: the handler processes the message
+      await handler(botMessage);
+
+      // Then: onMessage is not called
+      expect(onMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe("message processing", () => {
@@ -337,6 +372,136 @@ describe("createBot", () => {
 
       // Then: onMessage is called with the full prompt
       expect(onMessage).toHaveBeenCalledWith("!tone casual", "channel-123");
+    });
+  });
+
+  describe("channel command routing", () => {
+    it("should route !channel command to onChannelCommand when provided", async () => {
+      // Given: a bot with onChannelCommand handler
+      const onChannelCommand = vi.fn().mockReturnValue("常時応答モードに設定しました。");
+      createBot({ token: "test-token", onMessage, onChannelCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !channel on",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: channel command handler is used and onMessage is not called
+      expect(onChannelCommand).toHaveBeenCalledWith("on", "channel-123");
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(message.channel.send).toHaveBeenCalledWith("常時応答モードに設定しました。");
+    });
+
+    it("should fall through to onMessage when onChannelCommand is not provided", async () => {
+      // Given: a bot without channel command handler
+      createBot({ token: "test-token", onMessage });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !channel on",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: onMessage receives the command text as usual
+      expect(onMessage).toHaveBeenCalledWith("!channel on", "channel-123");
+    });
+
+    it("should route !channel command from always-on channel without mention", async () => {
+      // Given: a bot with always-on channel and channel command handler
+      const isAlwaysOnChannel = vi.fn().mockReturnValue(true);
+      const onChannelCommand = vi.fn().mockReturnValue("常時応答モードを解除しました。");
+      createBot({ token: "test-token", onMessage, onChannelCommand, isAlwaysOnChannel });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        content: "!channel off",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: channel command handler is used
+      expect(onChannelCommand).toHaveBeenCalledWith("off", "channel-123");
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("calendar command routing", () => {
+    it("should route !calendar command when handler is provided", async () => {
+      // Given: a bot with onCalendarCommand handler
+      const onCalendarCommand = vi.fn().mockResolvedValue("mode on");
+      createBot({ token: "test-token", onMessage, onCalendarCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !calendar on",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: calendar command handler is used
+      expect(onCalendarCommand).toHaveBeenCalledWith("on", "channel-123");
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(message.channel.send).toHaveBeenCalledWith("mode on");
+    });
+
+    it("should fall through when onCalendarCommand is not provided", async () => {
+      // Given: a bot without calendar command handler
+      createBot({ token: "test-token", onMessage });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !calendar on",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: onMessage receives the command text as usual
+      expect(onMessage).toHaveBeenCalledWith("!calendar on", "channel-123");
+    });
+  });
+
+  describe("calendar mode interception", () => {
+    it("should intercept natural language input when handler marks as handled", async () => {
+      // Given: a bot with calendar input handler that claims the message
+      const onCalendarInput = vi
+        .fn()
+        .mockResolvedValue({ handled: true, response: "Added" });
+      createBot({ token: "test-token", onMessage, onCalendarInput });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> 明日9時に会議",
+      });
+
+      // When: the handler processes the message
+      await handler(message);
+
+      // Then: calendar handler processes it and onMessage is not called
+      expect(onCalendarInput).toHaveBeenCalledWith("明日9時に会議", "channel-123");
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(message.channel.send).toHaveBeenCalledWith("Added");
+    });
+
+    it("should fall through when calendar input handler returns handled: false", async () => {
+      // Given: a handler that does not take ownership
+      const onCalendarInput = vi
+        .fn()
+        .mockResolvedValue({ handled: false, response: "" });
+      createBot({ token: "test-token", onMessage, onCalendarInput });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> 普通の質問",
+      });
+
+      // When: message is processed
+      await handler(message);
+
+      // Then: falls back to onMessage
+      expect(onCalendarInput).toHaveBeenCalled();
+      expect(onMessage).toHaveBeenCalledWith("普通の質問", "channel-123");
     });
   });
 

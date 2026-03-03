@@ -6,12 +6,25 @@ const {
   mockCreateGeminiHandler,
   mockCreateOllamaHandler,
   mockCreateBot,
+  mockCreateCalendarModeStore,
+  mockCreateCalendarModeController,
 } = vi.hoisted(() => ({
   mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateGeminiHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateOllamaHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateBot: vi.fn(),
+  mockCreateCalendarModeStore: vi.fn(() => ({
+    isActive: vi.fn(),
+    setActive: vi.fn(),
+    setChannelDefaultCalendar: vi.fn(),
+  })),
+  mockCreateCalendarModeController: vi.fn(() => ({
+    handleCommand: vi.fn().mockResolvedValue(""),
+    handleNaturalLanguageInput: vi
+      .fn()
+      .mockResolvedValue({ handled: false, response: "" }),
+  })),
 }));
 
 vi.mock("../history.js", () => ({
@@ -36,6 +49,14 @@ vi.mock("../ollama.js", () => ({
 
 vi.mock("../bot.js", () => ({
   createBot: mockCreateBot,
+}));
+
+vi.mock("../calendar-store.js", () => ({
+  createCalendarModeStore: mockCreateCalendarModeStore,
+}));
+
+vi.mock("../calendar-mode.js", () => ({
+  createCalendarModeController: mockCreateCalendarModeController,
 }));
 
 vi.mock("../tone.js", () => ({
@@ -360,5 +381,17 @@ describe("agent selection", () => {
     await importIndexWithEnv({ AGENT_TYPE: "ollama", OLLAMA_MODEL: "llama3.2" });
     expect(mockCreateOllamaHandler).toHaveBeenCalledTimes(1);
     expect(mockCreateClaudeHandler).not.toHaveBeenCalled();
+  });
+});
+
+describe("bootstrap wiring", () => {
+  it("wires calendar handlers into the Discord bot", async () => {
+    await importIndexWithEnv();
+    expect(mockCreateCalendarModeStore).toHaveBeenCalled();
+    expect(mockCreateCalendarModeController).toHaveBeenCalled();
+    const botArgs = mockCreateBot.mock.calls.at(-1)?.[0];
+    expect(botArgs).toBeDefined();
+    expect(typeof botArgs.onCalendarCommand).toBe("function");
+    expect(typeof botArgs.onCalendarInput).toBe("function");
   });
 });

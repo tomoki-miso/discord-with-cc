@@ -6,6 +6,10 @@ import { createGeminiHandler } from "./gemini.js";
 import { createOllamaHandler } from "./ollama.js";
 import { createBot } from "./bot.js";
 import { createToneStore } from "./tone.js";
+import { createCalendarModeStore } from "./calendar-store.js";
+import { createCalendarModeController } from "./calendar-mode.js";
+import { createChannelModeStore } from "./channel-store.js";
+import { createChannelModeController } from "./channel-mode.js";
 import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHandler } from "./agent.js";
 
 export function resolveWorkDir(env: Record<string, string | undefined>): string | undefined {
@@ -55,6 +59,10 @@ const agentType = normalizeAgentType(process.env.AGENT_TYPE);
 
 const sessionStore = createSessionStore();
 const toneStore = createToneStore({ filePath: join(workDir, "tone.json") });
+const calendarStore = createCalendarModeStore({ filePath: join(workDir, "calendar-mode.json") });
+const calendarController = createCalendarModeController({ store: calendarStore });
+const channelStore = createChannelModeStore({ filePath: join(workDir, "channel-mode.json") });
+const channelController = createChannelModeController({ store: channelStore });
 const handler = createHandlerForAgent(agentType, { cwd: workDir, sessionStore, toneStore });
 
 export function handleToneCommand(
@@ -100,6 +108,10 @@ createBot({
   token: discordToken,
   onMessage: (prompt, channelId) => handler.ask(prompt, channelId),
   onToneCommand: (args) => handleToneCommand(args, { toneStore, sessionStore }),
+  onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
+  onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),
+  onChannelCommand: (args, channelId) => channelController.handleCommand(args, channelId),
+  isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
 });
 
 type HandlerDeps = {
