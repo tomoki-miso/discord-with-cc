@@ -1,91 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { EventSummary, EventUpdate } from "./calendar-service.js";
-
-// JSON serialization helpers: Date <-> string
-type SerializedEventSummary = Omit<EventSummary, "start" | "end"> & { start: string; end: string };
-type SerializedEventUpdate = Omit<EventUpdate, "start" | "end"> & { start?: string; end?: string };
-
-export type PendingOperation =
-  | { type: "select_candidate"; opType: "delete" | "update"; candidates: EventSummary[]; updateData?: Partial<EventUpdate> }
-  | { type: "confirm_delete"; selectedEvent: EventSummary }
-  | { type: "confirm_update"; selectedEvent: EventSummary; updateData: Partial<EventUpdate> };
-
-type SerializedPendingOperation =
-  | { type: "select_candidate"; opType: "delete" | "update"; candidates: SerializedEventSummary[]; updateData?: Partial<SerializedEventUpdate> }
-  | { type: "confirm_delete"; selectedEvent: SerializedEventSummary }
-  | { type: "confirm_update"; selectedEvent: SerializedEventSummary; updateData: Partial<SerializedEventUpdate> };
-
-function serializeEventSummary(e: EventSummary): SerializedEventSummary {
-  return { ...e, start: e.start.toISOString(), end: e.end.toISOString() };
-}
-
-function deserializeEventSummary(e: SerializedEventSummary): EventSummary {
-  return { ...e, start: new Date(e.start), end: new Date(e.end) };
-}
-
-function serializeEventUpdate(u: Partial<EventUpdate>): Partial<SerializedEventUpdate> {
-  const result: Partial<SerializedEventUpdate> = {};
-  if (u.title !== undefined) result.title = u.title;
-  if (u.location !== undefined) result.location = u.location;
-  if (u.description !== undefined) result.description = u.description;
-  if (u.start !== undefined) result.start = u.start.toISOString();
-  if (u.end !== undefined) result.end = u.end.toISOString();
-  return result;
-}
-
-function deserializeEventUpdate(u: Partial<SerializedEventUpdate>): Partial<EventUpdate> {
-  const result: Partial<EventUpdate> = {};
-  if (u.title !== undefined) result.title = u.title;
-  if (u.location !== undefined) result.location = u.location;
-  if (u.description !== undefined) result.description = u.description;
-  if (u.start !== undefined) result.start = new Date(u.start);
-  if (u.end !== undefined) result.end = new Date(u.end);
-  return result;
-}
-
-function serializePendingOperation(op: PendingOperation): SerializedPendingOperation {
-  if (op.type === "select_candidate") {
-    return {
-      type: "select_candidate",
-      opType: op.opType,
-      candidates: op.candidates.map(serializeEventSummary),
-      updateData: op.updateData ? serializeEventUpdate(op.updateData) : undefined,
-    };
-  } else if (op.type === "confirm_delete") {
-    return { type: "confirm_delete", selectedEvent: serializeEventSummary(op.selectedEvent) };
-  } else {
-    return {
-      type: "confirm_update",
-      selectedEvent: serializeEventSummary(op.selectedEvent),
-      updateData: serializeEventUpdate(op.updateData),
-    };
-  }
-}
-
-function deserializePendingOperation(op: SerializedPendingOperation): PendingOperation {
-  if (op.type === "select_candidate") {
-    return {
-      type: "select_candidate",
-      opType: op.opType,
-      candidates: op.candidates.map(deserializeEventSummary),
-      updateData: op.updateData ? deserializeEventUpdate(op.updateData) : undefined,
-    };
-  } else if (op.type === "confirm_delete") {
-    return { type: "confirm_delete", selectedEvent: deserializeEventSummary(op.selectedEvent) };
-  } else {
-    return {
-      type: "confirm_update",
-      selectedEvent: deserializeEventSummary(op.selectedEvent),
-      updateData: deserializeEventUpdate(op.updateData),
-    };
-  }
-}
 
 export type CalendarModeChannelState = {
   active?: boolean;
   defaultCalendar?: string;
-  pendingOperation?: SerializedPendingOperation;
 };
 
 export type CalendarModeState = {
@@ -111,9 +29,6 @@ export type CalendarModeStore = {
   getGlobalDefaultCalendar(): string | undefined;
   getEffectiveCalendar(channelId: string): string | undefined;
   getChannelState(channelId: string): { active: boolean; defaultCalendar?: string };
-  getPendingOperation(channelId: string): PendingOperation | undefined;
-  setPendingOperation(channelId: string, op: PendingOperation): void;
-  clearPendingOperation(channelId: string): void;
 };
 
 export function createCalendarModeStore(options: CalendarModeStoreOptions = {}): CalendarModeStore {
@@ -180,26 +95,6 @@ export function createCalendarModeStore(options: CalendarModeStoreOptions = {}):
         active: Boolean(channel.active),
         defaultCalendar: channel.defaultCalendar,
       };
-    },
-
-    getPendingOperation(channelId: string) {
-      const serialized = state.channels[channelId]?.pendingOperation;
-      if (!serialized) return undefined;
-      return deserializePendingOperation(serialized);
-    },
-
-    setPendingOperation(channelId: string, op: PendingOperation) {
-      const channel = ensureChannel(channelId);
-      channel.pendingOperation = serializePendingOperation(op);
-      save();
-    },
-
-    clearPendingOperation(channelId: string) {
-      const channel = state.channels[channelId];
-      if (channel) {
-        delete channel.pendingOperation;
-        save();
-      }
     },
   };
 }
