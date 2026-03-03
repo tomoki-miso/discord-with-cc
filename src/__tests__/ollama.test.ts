@@ -26,15 +26,14 @@ function createSuccessResponse(content: string) {
   };
 }
 
-function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
+function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}, flat = false) {
+  const toolCall = flat
+    ? { name: toolName, arguments: toolArgs }
+    : { function: { name: toolName, arguments: toolArgs } };
   return {
     ok: true,
     json: vi.fn().mockResolvedValue({
-      message: {
-        role: "assistant",
-        content: "",
-        tool_calls: [{ function: { name: toolName, arguments: toolArgs } }],
-      },
+      message: { role: "assistant", content: "", tool_calls: [toolCall] },
       done: false,
     }),
     text: vi.fn(),
