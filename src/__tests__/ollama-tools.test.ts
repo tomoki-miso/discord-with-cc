@@ -23,6 +23,13 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
   StreamableHTTPClientTransport: vi.fn().mockImplementation(() => ({})),
 }));
 
+// ---- turndown mock ----
+vi.mock("turndown", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    turndown: vi.fn().mockReturnValue("# Markdown content"),
+  })),
+}));
+
 // ---- fs/promises mocks ----
 const mockReadFile = vi.fn();
 const mockWriteFile = vi.fn();
@@ -314,9 +321,11 @@ describe("createOllamaToolManager", () => {
   });
 
   describe("executeTool - web_fetch", () => {
-    it("fetches URL and returns text", async () => {
+    it("fetches URL and returns Markdown (converted from HTML)", async () => {
       // Given: mock global fetch
-      const mockFetch = vi.fn().mockResolvedValue({ text: vi.fn().mockResolvedValue("<html>page</html>") });
+      const mockFetch = vi.fn().mockResolvedValue({
+        text: vi.fn().mockResolvedValue("<html><body><h1>Title</h1></body></html>"),
+      });
       vi.stubGlobal("fetch", mockFetch);
 
       const manager = createOllamaToolManager(makeConfig());
@@ -324,8 +333,8 @@ describe("createOllamaToolManager", () => {
       // When
       const result = await manager.executeTool("web_fetch", { url: "https://example.com" });
 
-      // Then
-      expect(result).toBe("<html>page</html>");
+      // Then: turndown に変換されているはず
+      expect(result).toBe("# Markdown content");
 
       vi.unstubAllGlobals();
     });
