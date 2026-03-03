@@ -11,6 +11,7 @@ export type BotConfig = {
   onCalendarCommand?: (args: string, channelId: string) => Promise<string>;
   onCalendarInput?: (content: string, channelId: string) => Promise<{ handled: boolean; response: string }>;
   onChannelCommand?: (args: string, channelId: string) => string;
+  onClearCommand?: (channelId: string) => string;
   isAlwaysOnChannel?: (channelId: string) => boolean;
 };
 
@@ -56,6 +57,12 @@ async function handleMessage(
   if (prompt.startsWith("!channel") && config.onChannelCommand) {
     const args = prompt.slice("!channel".length).trim();
     const response = config.onChannelCommand(args, channel.id);
+    await channel.send(response);
+    return;
+  }
+
+  if (prompt === "!clear" && config.onClearCommand) {
+    const response = config.onClearCommand(channel.id);
     await channel.send(response);
     return;
   }

@@ -533,4 +533,39 @@ describe("createBot", () => {
       await expect(handler(message)).resolves.not.toThrow();
     });
   });
+
+  describe("clear command routing", () => {
+    it("should route !clear command to onClearCommand when provided", async () => {
+      // Given: a bot with onClearCommand handler
+      const onClearCommand = vi.fn().mockReturnValue("このチャンネルのコンテキストをクリアしました。");
+      createBot({ token: "test-token", onMessage, onClearCommand });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !clear",
+      });
+
+      // When: the handler processes a !clear message
+      await handler(message);
+
+      // Then: onClearCommand is called with channelId, onMessage is not called
+      expect(onClearCommand).toHaveBeenCalledWith("channel-123");
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(message.channel.send).toHaveBeenCalledWith("このチャンネルのコンテキストをクリアしました。");
+    });
+
+    it("should fall through to onMessage when onClearCommand is not provided", async () => {
+      // Given: a bot without onClearCommand handler
+      createBot({ token: "test-token", onMessage });
+      const handler = getMessageCreateHandler();
+      const message = createMockMessage({
+        content: "<@12345> !clear",
+      });
+
+      // When: the handler processes a !clear message
+      await handler(message);
+
+      // Then: onMessage is called with the command text
+      expect(onMessage).toHaveBeenCalledWith("!clear", "channel-123");
+    });
+  });
 });
