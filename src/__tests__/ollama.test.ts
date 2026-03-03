@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createOllamaHandler } from "../ollama.js";
+import type { OllamaToolDef, OllamaToolManager } from "../ollama-tools.js";
 
 // グローバルfetchをモック
 const mockFetch = vi.fn();
@@ -24,6 +25,38 @@ function createSuccessResponse(content: string) {
     text: vi.fn(),
   };
 }
+
+function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    json: vi.fn().mockResolvedValue({
+      message: {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ function: { name: toolName, arguments: toolArgs } }],
+      },
+      done: false,
+    }),
+    text: vi.fn(),
+  };
+}
+
+function createMockToolManager(tools: OllamaToolDef[] = []): OllamaToolManager {
+  return {
+    getTools: vi.fn().mockResolvedValue(tools),
+    executeTool: vi.fn().mockResolvedValue("tool result"),
+    dispose: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+const SAMPLE_TOOL: OllamaToolDef = {
+  type: "function",
+  function: {
+    name: "read_file",
+    description: "Read a file",
+    parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+  },
+};
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -163,6 +196,117 @@ describe("createOllamaHandler", () => {
       await expect(handler.ask("Hello", "ch1")).rejects.toThrow(
         "Ollama API error 500: Internal Server Error",
       );
+    });
+
+    // ---- Agentic loop tests ----
+    it("includes tools in the request body when toolManager is provided", async () => {
+      // Given: handler with a toolManager that has one tool
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch.mockResolvedValueOnce(createSuccessResponse("done"));
+
+      // When
+      await handler.ask("Read a file", "ch1");
+
+      // Then: the request body contains the tools array
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.tools).toBeDefined();
+      expect(body.tools).toHaveLength(1);
+      expect(body.tools[0].function.name).toBe("read_file");
+    });
+
+    it("does not include tools in the request body when toolManager is absent", async () => {
+      // Given: handler without toolManager
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "llama3.2",
+        toneStore,
+      });
+      mockFetch.mockResolvedValueOnce(createSuccessResponse("done"));
+
+      // When
+      await handler.ask("Hello", "ch1");
+
+      // Then: tools key is absent from the request body
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.tools).toBeUndefined();
+    });
+
+    it("calls executeTool when the response contains tool_calls", async () => {
+      // Given: first response has tool_calls, second is a final text response
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch
+        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "src/foo.ts" }))
+        .mockResolvedValueOnce(createSuccessResponse("Here is the content"));
+
+      // When
+      const result = await handler.ask("Read src/foo.ts", "ch1");
+
+      // Then: executeTool was called with the tool name and arguments
+      expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "src/foo.ts" });
+      // And: the final text response is returned
+      expect(result).toBe("Here is the content");
+    });
+
+    it("sends tool results back in the second fetch call", async () => {
+      // Given: first fetch returns a tool call, second fetch returns final text
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      vi.mocked(toolManager.executeTool).mockResolvedValue("file content here");
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch
+        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "foo.ts" }))
+        .mockResolvedValueOnce(createSuccessResponse("The file says: file content here"));
+
+      // When
+      await handler.ask("Read foo.ts", "ch1");
+
+      // Then: the second fetch includes a tool message with the tool result
+      const secondBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+      const messages: Array<{ role: string; content: string }> = secondBody.messages;
+      const toolMsg = messages.find((m) => m.role === "tool");
+      expect(toolMsg).toBeDefined();
+      expect(toolMsg?.content).toBe("file content here");
+    });
+
+    it("returns the max-iterations message when tool calls repeat 10 times", async () => {
+      // Given: every response has tool_calls (loop never terminates naturally)
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen2.5:7b",
+        toneStore,
+        toolManager,
+      });
+      // Always return a tool call response
+      mockFetch.mockResolvedValue(createToolCallResponse("read_file", { path: "a.ts" }));
+
+      // When
+      const result = await handler.ask("Keep looping", "ch1");
+
+      // Then: exactly 10 fetch calls were made and the max-iterations message is returned
+      expect(mockFetch).toHaveBeenCalledTimes(10);
+      expect(result).toContain("最大ツール実行回数");
     });
   });
 });

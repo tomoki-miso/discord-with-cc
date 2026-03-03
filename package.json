@@ -7,10 +7,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx --env-file=.env.dev src/index.ts",
+    "claude": "tsx --env-file=.env.claude --env-file=.env.dev src/index.ts",
+    "qwen": "tsx --env-file=.env.qwen --env-file=.env.dev src/index.ts",
     "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
+    "@modelcontextprotocol/sdk": "latest",
     "chrono-node": "^2.9.0",
     "discord.js": "^14"
   },

@@ -4,6 +4,8 @@ import { createClaudeHandler } from "./claude.js";
 import { createCodexHandler } from "./codex.js";
 import { createGeminiHandler } from "./gemini.js";
 import { createOllamaHandler } from "./ollama.js";
+import { createOllamaToolManager } from "./ollama-tools.js";
+import { MCP_SERVERS } from "./permissions.js";
 import { createBot } from "./bot.js";
 import { createToneStore } from "./tone.js";
 import { createCalendarModeStore } from "./calendar-store.js";
@@ -143,7 +145,8 @@ function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHa
     case "ollama": {
       const apiUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
       const model = process.env.OLLAMA_MODEL!;
-      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore });
+      const toolManager = createOllamaToolManager({ mcpServers: MCP_SERVERS, cwd: deps.cwd });
+      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore, toolManager });
     }
     case "claude":
     default:

@@ -1,10 +1,11 @@
 import type { AgentHandler } from "./agent.js";
 import type { ToneStore } from "./tone.js";
+import type { OllamaToolManager, OllamaToolDef, OllamaToolCall } from "./ollama-tools.js";
 
-type OllamaMessage = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
+type OllamaMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; tool_calls?: OllamaToolCall[] }
+  | { role: "tool"; content: string };
 
 type OllamaApiResponse = {
   message: OllamaMessage;
@@ -15,7 +16,10 @@ export type OllamaHandlerConfig = {
   apiUrl: string;
   model: string;
   toneStore: ToneStore;
+  toolManager?: OllamaToolManager;
 };
+
+const MAX_TOOL_ITERATIONS = 10;
 
 export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
   const historyMap = new Map<string, OllamaMessage[]>();
@@ -32,26 +36,60 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
         : [];
 
       const userMessage: OllamaMessage = { role: "user", content: prompt };
-      const messages = [...systemMessages, ...history, userMessage];
+      let messages: OllamaMessage[] = [...systemMessages, ...history, userMessage];
 
-      const response = await fetch(`${config.apiUrl}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: config.model, messages, stream: false }),
-      });
+      const tools: OllamaToolDef[] = config.toolManager
+        ? await config.toolManager.getTools()
+        : [];
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error ${response.status}: ${errorText}`);
+      for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+        const body: Record<string, unknown> = {
+          model: config.model,
+          messages,
+          stream: false,
+        };
+        if (tools.length > 0) {
+          body.tools = tools;
+        }
+
+        const response = await fetch(`${config.apiUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Ollama API error ${response.status}: ${errorText}`);
+        }
+
+        const data = (await response.json()) as OllamaApiResponse;
+        const assistantMessage = data.message as Extract<OllamaMessage, { role: "assistant" }>;
+
+        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+          // No tool calls — save history and return the text response
+          historyMap.set(channelId, [...history, userMessage, assistantMessage]);
+          return assistantMessage.content;
+        }
+
+        // Execute all tool calls in parallel
+        const toolResults = await Promise.all(
+          assistantMessage.tool_calls.map((tc) =>
+            config.toolManager!.executeTool(tc.function.name, tc.function.arguments),
+          ),
+        );
+
+        // Append assistant message and tool results, then loop
+        const toolMessages: OllamaMessage[] = toolResults.map((r) => ({
+          role: "tool" as const,
+          content: r,
+        }));
+        messages = [...messages, assistantMessage, ...toolMessages];
       }
 
-      const data = (await response.json()) as OllamaApiResponse;
-      const assistantMessage = data.message;
-
-      // Update history: store user + assistant messages (without system message)
-      historyMap.set(channelId, [...history, userMessage, assistantMessage]);
-
-      return assistantMessage.content;
+      // Maximum iterations reached — save accumulated messages (excluding system prompt)
+      historyMap.set(channelId, messages.slice(systemMessages.length));
+      return "（最大ツール実行回数に達しました）";
     },
   };
 }
