@@ -18,17 +18,10 @@ export type OllamaToolDef = {
   };
 };
 
-// Ollama tool call — supports both wrapper formats:
-//   standard:  { function: { name, arguments } }
-//   flat:      { name, arguments }  (some models like qwen3)
-export type OllamaToolCall =
-  | { function: { name: string; arguments: Record<string, unknown> } }
-  | { name: string; arguments: Record<string, unknown> };
-
-export function resolveToolCall(tc: OllamaToolCall): { name: string; arguments: Record<string, unknown> } {
-  if ("function" in tc) return tc.function;
-  return { name: tc.name, arguments: tc.arguments };
-}
+// Ollama returns tool call arguments as an already-parsed object
+export type OllamaToolCall = {
+  function: { name: string; arguments: Record<string, unknown> };
+};
 
 export type OllamaToolManagerConfig = {
   mcpServers: Record<string, McpServerConfig>;

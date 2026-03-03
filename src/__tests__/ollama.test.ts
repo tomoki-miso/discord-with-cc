@@ -26,14 +26,15 @@ function createSuccessResponse(content: string) {
   };
 }
 
-function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}, flat = false) {
-  const toolCall = flat
-    ? { name: toolName, arguments: toolArgs }
-    : { function: { name: toolName, arguments: toolArgs } };
+function createToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
   return {
     ok: true,
     json: vi.fn().mockResolvedValue({
-      message: { role: "assistant", content: "", tool_calls: [toolCall] },
+      message: {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ function: { name: toolName, arguments: toolArgs } }],
+      },
       done: false,
     }),
     text: vi.fn(),
@@ -308,26 +309,41 @@ describe("createOllamaHandler", () => {
       expect(result).toContain("最大ツール実行回数");
     });
 
-    it("handles flat tool_call format { name, arguments } without function wrapper (qwen3 etc.)", async () => {
-      // Given: response uses flat format instead of { function: { name, arguments } }
-      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+    it("includes options in the request body when options are provided", async () => {
+      // Given: a handler with model options configured
       const toneStore = createMockToneStore();
       const handler = createOllamaHandler({
         apiUrl: "http://localhost:11434",
-        model: "qwen3.5:9b",
+        model: "qwen2.5:7b",
         toneStore,
-        toolManager,
+        options: { temperature: 0.5, num_ctx: 2048, top_p: 0.9, num_predict: 512 },
       });
-      mockFetch
-        .mockResolvedValueOnce(createToolCallResponse("read_file", { path: "foo.ts" }, true))
-        .mockResolvedValueOnce(createSuccessResponse("file content"));
+      mockFetch.mockResolvedValueOnce(createSuccessResponse("response"));
 
       // When
-      const result = await handler.ask("Read foo.ts", "ch1");
+      await handler.ask("Hello", "ch1");
 
-      // Then: executeTool is still called correctly despite the flat format
-      expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "foo.ts" });
-      expect(result).toBe("file content");
+      // Then: options are passed in the request body
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.options).toEqual({ temperature: 0.5, num_ctx: 2048, top_p: 0.9, num_predict: 512 });
+    });
+
+    it("omits options from the request body when no options are provided", async () => {
+      // Given: a handler with no options
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "llama3.2",
+        toneStore,
+      });
+      mockFetch.mockResolvedValueOnce(createSuccessResponse("response"));
+
+      // When
+      await handler.ask("Hello", "ch1");
+
+      // Then: options key is absent from the request body
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.options).toBeUndefined();
     });
   });
 });

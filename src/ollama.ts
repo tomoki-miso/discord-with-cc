@@ -1,7 +1,6 @@
 import type { AgentHandler } from "./agent.js";
 import type { ToneStore } from "./tone.js";
 import type { OllamaToolManager, OllamaToolDef, OllamaToolCall } from "./ollama-tools.js";
-import { resolveToolCall } from "./ollama-tools.js";
 
 type OllamaMessage =
   | { role: "system" | "user"; content: string }
@@ -13,11 +12,19 @@ type OllamaApiResponse = {
   done: boolean;
 };
 
+export type OllamaModelOptions = {
+  num_ctx?: number;
+  temperature?: number;
+  top_p?: number;
+  num_predict?: number;
+};
+
 export type OllamaHandlerConfig = {
   apiUrl: string;
   model: string;
   toneStore: ToneStore;
   toolManager?: OllamaToolManager;
+  options?: OllamaModelOptions;
 };
 
 const MAX_TOOL_ITERATIONS = 10;
@@ -52,6 +59,9 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
         if (tools.length > 0) {
           body.tools = tools;
         }
+        if (config.options && Object.keys(config.options).length > 0) {
+          body.options = config.options;
+        }
 
         const response = await fetch(`${config.apiUrl}/api/chat`, {
           method: "POST",
@@ -73,12 +83,11 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
           return assistantMessage.content;
         }
 
-        // Execute all tool calls in parallel (handle both { function: {...} } and { name, arguments } formats)
+        // Execute all tool calls in parallel
         const toolResults = await Promise.all(
-          assistantMessage.tool_calls.map((tc) => {
-            const { name, arguments: args } = resolveToolCall(tc);
-            return config.toolManager!.executeTool(name, args);
-          }),
+          assistantMessage.tool_calls.map((tc) =>
+            config.toolManager!.executeTool(tc.function.name, tc.function.arguments),
+          ),
         );
 
         // Append assistant message and tool results, then loop
