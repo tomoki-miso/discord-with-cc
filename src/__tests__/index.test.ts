@@ -154,11 +154,13 @@ async function importIndexWithEnv(overrides: Record<string, string | undefined> 
 
 let validateEnv: (env: Record<string, string | undefined>) => { missing: { name: string; description: string }[] };
 let handleToneCommand: (args: string, deps: { toneStore: any; sessionStore: any }) => string;
+let parseOllamaOptions: (env: Record<string, string | undefined>) => Record<string, unknown>;
 
 beforeAll(async () => {
   const mod = await importIndexWithEnv();
   validateEnv = mod.validateEnv;
   handleToneCommand = mod.handleToneCommand;
+  parseOllamaOptions = mod.parseOllamaOptions;
 });
 
 describe("validateEnv", () => {
@@ -393,5 +395,42 @@ describe("bootstrap wiring", () => {
     expect(botArgs).toBeDefined();
     expect(typeof botArgs.onCalendarCommand).toBe("function");
     expect(typeof botArgs.onCalendarInput).toBe("function");
+  });
+});
+
+describe("parseOllamaOptions", () => {
+  it("returns empty object when no OLLAMA_ env vars are set", () => {
+    const result = parseOllamaOptions({});
+    expect(result).toEqual({});
+  });
+
+  it("parses OLLAMA_TEMPERATURE as float", () => {
+    const result = parseOllamaOptions({ OLLAMA_TEMPERATURE: "0.7" });
+    expect(result.temperature).toBe(0.7);
+  });
+
+  it("parses OLLAMA_NUM_CTX as integer", () => {
+    const result = parseOllamaOptions({ OLLAMA_NUM_CTX: "4096" });
+    expect(result.num_ctx).toBe(4096);
+  });
+
+  it("parses OLLAMA_TOP_P as float", () => {
+    const result = parseOllamaOptions({ OLLAMA_TOP_P: "0.95" });
+    expect(result.top_p).toBe(0.95);
+  });
+
+  it("parses OLLAMA_NUM_PREDICT as integer", () => {
+    const result = parseOllamaOptions({ OLLAMA_NUM_PREDICT: "512" });
+    expect(result.num_predict).toBe(512);
+  });
+
+  it("parses all options together", () => {
+    const result = parseOllamaOptions({
+      OLLAMA_TEMPERATURE: "0.5",
+      OLLAMA_NUM_CTX: "2048",
+      OLLAMA_TOP_P: "0.9",
+      OLLAMA_NUM_PREDICT: "256",
+    });
+    expect(result).toEqual({ temperature: 0.5, num_ctx: 2048, top_p: 0.9, num_predict: 256 });
   });
 });

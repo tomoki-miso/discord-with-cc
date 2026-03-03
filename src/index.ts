@@ -3,7 +3,7 @@ import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
 import { createCodexHandler } from "./codex.js";
 import { createGeminiHandler } from "./gemini.js";
-import { createOllamaHandler } from "./ollama.js";
+import { createOllamaHandler, type OllamaModelOptions } from "./ollama.js";
 import { createOllamaToolManager } from "./ollama-tools.js";
 import { MCP_SERVERS } from "./permissions.js";
 import { createBot } from "./bot.js";
@@ -136,6 +136,23 @@ type HandlerDeps = {
   toneStore: ReturnType<typeof createToneStore>;
 };
 
+export function parseOllamaOptions(env: Record<string, string | undefined>): OllamaModelOptions {
+  const options: OllamaModelOptions = {};
+  if (env.OLLAMA_TEMPERATURE !== undefined) {
+    options.temperature = parseFloat(env.OLLAMA_TEMPERATURE);
+  }
+  if (env.OLLAMA_NUM_CTX !== undefined) {
+    options.num_ctx = parseInt(env.OLLAMA_NUM_CTX, 10);
+  }
+  if (env.OLLAMA_TOP_P !== undefined) {
+    options.top_p = parseFloat(env.OLLAMA_TOP_P);
+  }
+  if (env.OLLAMA_NUM_PREDICT !== undefined) {
+    options.num_predict = parseInt(env.OLLAMA_NUM_PREDICT, 10);
+  }
+  return options;
+}
+
 function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHandler {
   switch (agentType) {
     case "codex":
@@ -146,7 +163,8 @@ function createHandlerForAgent(agentType: AgentType, deps: HandlerDeps): AgentHa
       const apiUrl = process.env.OLLAMA_URL ?? "http://localhost:11434";
       const model = process.env.OLLAMA_MODEL!;
       const toolManager = createOllamaToolManager({ mcpServers: MCP_SERVERS, cwd: deps.cwd });
-      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore, toolManager });
+      const options = parseOllamaOptions(process.env);
+      return createOllamaHandler({ apiUrl, model, toneStore: deps.toneStore, toolManager, options });
     }
     case "claude":
     default:
