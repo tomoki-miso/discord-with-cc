@@ -57,6 +57,20 @@ const discordToken = process.env.DISCORD_TOKEN!;
 const workDir = resolveWorkDir(process.env)!;
 const agentType = normalizeAgentType(process.env.AGENT_TYPE);
 
+const agentLabel = (() => {
+  switch (agentType) {
+    case "ollama":
+      return `ollama (${process.env.OLLAMA_MODEL})`;
+    case "codex":
+      return process.env.CODEX_BIN ? `codex (${process.env.CODEX_BIN})` : "codex";
+    case "gemini":
+      return process.env.GEMINI_BIN ? `gemini (${process.env.GEMINI_BIN})` : "gemini";
+    default:
+      return "claude";
+  }
+})();
+process.stderr.write(`🤖 Agent: ${agentLabel}\n`);
+
 const sessionStore = createSessionStore();
 const toneStore = createToneStore({ filePath: join(workDir, "tone.json") });
 const calendarStore = createCalendarModeStore({ filePath: join(workDir, "calendar-mode.json") });
