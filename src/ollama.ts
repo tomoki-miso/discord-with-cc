@@ -29,6 +29,14 @@ export type OllamaHandlerConfig = {
 
 const MAX_TOOL_ITERATIONS = 10;
 
+/** Normalize tool call to { name, arguments } regardless of nested or flat format */
+function resolveToolCall(tc: OllamaToolCall): { name: string; arguments: Record<string, unknown> } {
+  if ("function" in tc) {
+    return { name: tc.function.name, arguments: tc.function.arguments };
+  }
+  return { name: tc.name, arguments: tc.arguments };
+}
+
 async function readStreamingResponse(response: Response): Promise<{
   content: string;
   tool_calls?: OllamaToolCall[];
@@ -120,11 +128,12 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
           return assistantMessage.content;
         }
 
-        // Execute all tool calls in parallel
+        // Execute all tool calls in parallel (handles both nested and flat formats)
         const toolResults = await Promise.all(
-          assistantMessage.tool_calls.map((tc) =>
-            config.toolManager!.executeTool(tc.function.name, tc.function.arguments),
-          ),
+          assistantMessage.tool_calls.map((tc) => {
+            const { name, arguments: args } = resolveToolCall(tc);
+            return config.toolManager!.executeTool(name, args);
+          }),
         );
 
         // Append assistant message and tool results, then loop

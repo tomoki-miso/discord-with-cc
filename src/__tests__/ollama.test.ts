@@ -35,14 +35,17 @@ function createStreamingSuccessResponse(content: string) {
   };
 }
 
-function createStreamingToolCallResponse(toolName: string, toolArgs: Record<string, unknown> = {}) {
+function createStreamingToolCallResponse(
+  toolName: string,
+  toolArgs: Record<string, unknown> = {},
+  flat = false,
+) {
+  const toolCall = flat
+    ? { name: toolName, arguments: toolArgs }
+    : { function: { name: toolName, arguments: toolArgs } };
   const chunks = [
     JSON.stringify({
-      message: {
-        role: "assistant",
-        content: "",
-        tool_calls: [{ function: { name: toolName, arguments: toolArgs } }],
-      },
+      message: { role: "assistant", content: "", tool_calls: [toolCall] },
       done: false,
     }),
     JSON.stringify({ message: { role: "assistant", content: "" }, done: true }),
@@ -421,6 +424,28 @@ describe("createOllamaHandler", () => {
       const result = await handler.ask("Read foo.ts", "ch1");
 
       // Then
+      expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "foo.ts" });
+      expect(result).toBe("file content");
+    });
+
+    it("handles flat tool_call format { name, arguments } without function wrapper (qwen3 etc.)", async () => {
+      // Given: response uses flat format instead of { function: { name, arguments } }
+      const toolManager = createMockToolManager([SAMPLE_TOOL]);
+      const toneStore = createMockToneStore();
+      const handler = createOllamaHandler({
+        apiUrl: "http://localhost:11434",
+        model: "qwen3.5:9b",
+        toneStore,
+        toolManager,
+      });
+      mockFetch
+        .mockResolvedValueOnce(createStreamingToolCallResponse("read_file", { path: "foo.ts" }, true))
+        .mockResolvedValueOnce(createStreamingSuccessResponse("file content"));
+
+      // When
+      const result = await handler.ask("Read foo.ts", "ch1");
+
+      // Then: executeTool is still called correctly despite the flat format
       expect(toolManager.executeTool).toHaveBeenCalledWith("read_file", { path: "foo.ts" });
       expect(result).toBe("file content");
     });
