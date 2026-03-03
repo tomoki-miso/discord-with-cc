@@ -396,6 +396,29 @@ describe("bootstrap wiring", () => {
     expect(typeof botArgs.onCalendarCommand).toBe("function");
     expect(typeof botArgs.onCalendarInput).toBe("function");
   });
+
+  it("should pass onClearCommand to createBot", async () => {
+    // Given/When: createBot is called (via index.ts startup)
+    await importIndexWithEnv();
+
+    // Then: onClearCommand is provided in the bot config
+    const botConfig = mockCreateBot.mock.calls.at(-1)?.[0];
+    expect(botConfig.onClearCommand).toBeDefined();
+    expect(typeof botConfig.onClearCommand).toBe("function");
+  });
+
+  it("should clear handler history when onClearCommand is called", async () => {
+    // Given: the onClearCommand from bot config
+    await importIndexWithEnv();
+    const botConfig = mockCreateBot.mock.calls.at(-1)?.[0];
+    const onClearCommand = botConfig.onClearCommand as (channelId: string) => string;
+
+    // When: onClearCommand is called
+    const result = onClearCommand("channel-42");
+
+    // Then: returns confirmation message
+    expect(result).toBe("このチャンネルのコンテキストをクリアしました。");
+  });
 });
 
 describe("parseOllamaOptions", () => {

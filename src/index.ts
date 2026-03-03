@@ -141,6 +141,10 @@ createBot({
   onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
   onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),
   onChannelCommand: (args, channelId) => channelController.handleCommand(args, channelId),
+  onClearCommand: (channelId) => {
+    handler.clearHistory?.(channelId);
+    return "このチャンネルのコンテキストをクリアしました。";
+  },
   isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
 });
 
