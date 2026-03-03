@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createOllamaHandler } from "../ollama.js";
+import { createOllamaHandler, shouldPreFetchWebSearch } from "../ollama.js";
 import { DISCORD_BOT_PROMPT } from "../prompts.js";
 import type { OllamaToolDef, OllamaToolManager } from "../ollama-tools.js";
 
@@ -62,6 +62,18 @@ function createStreamingToolCallResponse(
       },
     }),
     text: vi.fn(),
+  };
+}
+
+function createQueryGenerationResponse(query: string) {
+  return {
+    ok: true,
+    json: vi.fn().mockResolvedValue({
+      message: { role: "assistant", content: query },
+      done: true,
+    }),
+    text: vi.fn(),
+    body: null,
   };
 }
 
@@ -479,5 +491,123 @@ describe("createOllamaHandler", () => {
       expect(nonSystemMessages).toHaveLength(1);
       expect(nonSystemMessages[0]).toMatchObject({ role: "user", content: "hi again" });
     });
+
+    describe("pre-emptive web search", () => {
+      it("calls web_search and injects results when prompt contains news keyword", async () => {
+        // Given: handler with toolManager, model returns text after seeing search results
+        const toneStore = createMockToneStore();
+        const toolManager = createMockToolManager([]);
+        vi.mocked(toolManager.executeTool).mockResolvedValueOnce("Search result: top news today");
+        const handler = createOllamaHandler({
+          apiUrl: "http://localhost:11434",
+          model: "qwen2.5:7b",
+          toneStore,
+          toolManager,
+        });
+        // First fetch: generateSearchQuery returns a refined query
+        mockFetch.mockResolvedValueOnce(createQueryGenerationResponse("最新ニュース 今日"));
+        // Second fetch: main chat response
+        mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("Here is the news summary"));
+
+        // When: asking about news
+        const result = await handler.ask("今日のニュース教えて", "ch1");
+
+        // Then: web_search was called with the model-generated query (not the raw prompt)
+        expect(toolManager.executeTool).toHaveBeenCalledWith("web_search", { query: "最新ニュース 今日" });
+        // Then: the user message sent to Ollama contains the search results
+        const callBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+        const userMsg = callBody.messages.find((m: { role: string }) => m.role === "user");
+        expect(userMsg.content).toContain("Search result: top news today");
+        expect(userMsg.content).toContain("今日のニュース教えて");
+        expect(userMsg.content).toContain("出典");
+        // Then: returns the model's response
+        expect(result).toBe("Here is the news summary");
+      });
+
+      it("does NOT call web_search for non-news queries", async () => {
+        // Given: handler with toolManager
+        const toneStore = createMockToneStore();
+        const toolManager = createMockToolManager([]);
+        const handler = createOllamaHandler({
+          apiUrl: "http://localhost:11434",
+          model: "qwen2.5:7b",
+          toneStore,
+          toolManager,
+        });
+        mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("Sure, here's the code"));
+
+        // When: asking a coding question
+        await handler.ask("Reactのhooksの使い方を教えて", "ch1");
+
+        // Then: web_search was NOT called
+        expect(toolManager.executeTool).not.toHaveBeenCalledWith("web_search", expect.anything());
+      });
+
+      it("skips injection when web_search returns an error", async () => {
+        // Given: toolManager.executeTool returns an error
+        const toneStore = createMockToneStore();
+        const toolManager = createMockToolManager([]);
+        vi.mocked(toolManager.executeTool).mockResolvedValueOnce("Error: TAVILY_API_KEY is not set");
+        const handler = createOllamaHandler({
+          apiUrl: "http://localhost:11434",
+          model: "qwen2.5:7b",
+          toneStore,
+          toolManager,
+        });
+        // First fetch: generateSearchQuery
+        mockFetch.mockResolvedValueOnce(createQueryGenerationResponse("今日 ニュース"));
+        // Second fetch: main chat response
+        mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("Sorry, I cannot help"));
+
+        // When: asking about news but search fails
+        await handler.ask("今日のニュース教えて", "ch1");
+
+        // Then: user message is the original prompt (no injection)
+        const callBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+        const userMsg = callBody.messages.find((m: { role: string }) => m.role === "user");
+        expect(userMsg.content).toBe("今日のニュース教えて");
+      });
+
+      it("does NOT call web_search when toolManager is undefined", async () => {
+        // Given: handler without toolManager
+        const toneStore = createMockToneStore();
+        const handler = createOllamaHandler({
+          apiUrl: "http://localhost:11434",
+          model: "qwen2.5:7b",
+          toneStore,
+        });
+        mockFetch.mockResolvedValueOnce(createStreamingSuccessResponse("No search possible"));
+
+        // When: asking about news without a tool manager
+        const result = await handler.ask("今日のニュース教えて", "ch1");
+
+        // Then: no error, just returns the model response
+        expect(result).toBe("No search possible");
+      });
+    });
+  });
+});
+
+describe("shouldPreFetchWebSearch", () => {
+  it("returns true for 'ニュース'", () => {
+    expect(shouldPreFetchWebSearch("今日のニュース教えて")).toBe(true);
+  });
+  it("returns true for '天気'", () => {
+    expect(shouldPreFetchWebSearch("東京の天気は？")).toBe(true);
+  });
+  it("returns true for '速報'", () => {
+    expect(shouldPreFetchWebSearch("速報を教えて")).toBe(true);
+  });
+  it("returns true for 'news'", () => {
+    expect(shouldPreFetchWebSearch("latest news please")).toBe(true);
+  });
+  it("returns true for 'weather'", () => {
+    expect(shouldPreFetchWebSearch("what's the weather today")).toBe(true);
+  });
+  it("returns false for calendar query", () => {
+    expect(shouldPreFetchWebSearch("明日の予定を教えて")).toBe(false);
+  });
+  it("returns false for general coding question", () => {
+    expect(shouldPreFetchWebSearch("Reactのhooksとは？")).toBe(false);
   });
 });
