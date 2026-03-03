@@ -6,6 +6,7 @@ export const DEFAULT_AGENT: AgentType = "claude";
 
 export type AgentHandler = {
   ask(prompt: string, channelId: string): Promise<string>;
+  clearHistory?(channelId: string): void;
 };
 
 function isAgent(value: string): value is AgentType {
