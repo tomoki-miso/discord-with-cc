@@ -33,7 +33,8 @@
       "WebSearch",
       "mcp__claude_ai_Google_Calendar",
       "mcp__claude_ai_Slack",
-      "mcp__apple-mcp"
+      "mcp__apple-mcp",
+      "mcp__google-calendar"
     ],
     "deny": [
       "Read(.env)",

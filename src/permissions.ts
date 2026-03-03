@@ -34,6 +34,7 @@ export const ALLOWED_TOOLS = [
   "mcp__claude_ai_Google_Calendar",
   "mcp__claude_ai_Slack",
   "mcp__apple-mcp",
+  "mcp__google-calendar",
 ] as const;
 
 export const DISALLOWED_TOOLS = [
@@ -67,5 +68,10 @@ export const MCP_SERVERS: Record<string, McpServerConfig> = {
     type: "stdio",
     command: "bunx",
     args: ["--no-cache", "apple-mcp@latest"],
+  },
+  "google-calendar": {
+    type: "stdio",
+    command: "npx",
+    args: ["-y", "@cocal/google-calendar-mcp"],
   },
 };

@@ -5,3 +5,4 @@ dist/
 !.env.example
 .claude/settings.local.json
 .worktrees/
+secrets/gcp-oauth.keys.json
