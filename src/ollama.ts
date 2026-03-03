@@ -1,6 +1,7 @@
 import type { AgentHandler } from "./agent.js";
 import type { ToneStore } from "./tone.js";
 import type { OllamaToolManager, OllamaToolDef, OllamaToolCall } from "./ollama-tools.js";
+import { DISCORD_BOT_PROMPT } from "./prompts.js";
 
 type OllamaMessage =
   | { role: "system" | "user"; content: string }
@@ -78,11 +79,10 @@ export function createOllamaHandler(config: OllamaHandlerConfig): AgentHandler {
       // Given: previous messages for this channel
       const history = historyMap.get(channelId) ?? [];
 
-      // System prompt from tone store (prepended per request, not stored in history)
-      const systemPrompt = config.toneStore.getSystemPrompt();
-      const systemMessages: OllamaMessage[] = systemPrompt
-        ? [{ role: "system", content: systemPrompt }]
-        : [];
+      // System prompt: always include base Discord bot instructions + tone
+      const tonePrompt = config.toneStore.getSystemPrompt();
+      const systemContent = [DISCORD_BOT_PROMPT, tonePrompt].filter(Boolean).join("\n\n");
+      const systemMessages: OllamaMessage[] = [{ role: "system", content: systemContent }];
 
       const userMessage: OllamaMessage = { role: "user", content: prompt };
       let messages: OllamaMessage[] = [...systemMessages, ...history, userMessage];

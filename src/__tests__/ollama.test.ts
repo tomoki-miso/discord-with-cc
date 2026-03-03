@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createOllamaHandler } from "../ollama.js";
+import { DISCORD_BOT_PROMPT } from "../prompts.js";
 import type { OllamaToolDef, OllamaToolManager } from "../ollama-tools.js";
 
 // グローバルfetchをモック
@@ -151,7 +152,7 @@ describe("createOllamaHandler", () => {
       expect(messages).toContainEqual({ role: "user", content: "Question in B" });
     });
 
-    it("does not include a system message when systemPrompt is empty", async () => {
+    it("always includes DISCORD_BOT_PROMPT as system message even when tone is empty", async () => {
       // Given: a tone store returning an empty system prompt
       const toneStore = createMockToneStore("");
       const handler = createOllamaHandler({
@@ -164,10 +165,12 @@ describe("createOllamaHandler", () => {
       // When: asking a question
       await handler.ask("Hello", "ch1");
 
-      // Then: no system message is included in the request
+      // Then: system message is included with only DISCORD_BOT_PROMPT
       const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-      const messages: Array<{ role: string }> = body.messages;
-      expect(messages.some((m) => m.role === "system")).toBe(false);
+      const messages: Array<{ role: string; content: string }> = body.messages;
+      const systemMessages = messages.filter((m) => m.role === "system");
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages[0].content).toBe(DISCORD_BOT_PROMPT);
     });
 
     it("prepends a system message when systemPrompt is set, but does not store it in history", async () => {
@@ -186,11 +189,11 @@ describe("createOllamaHandler", () => {
       await handler.ask("First", "ch1");
       await handler.ask("Second", "ch1");
 
-      // Then: first request has system message prepended
+      // Then: first request has system message prepended (DISCORD_BOT_PROMPT + tone)
       const firstBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(firstBody.messages[0]).toEqual({
         role: "system",
-        content: "You are a helpful assistant.",
+        content: `${DISCORD_BOT_PROMPT}\n\nYou are a helpful assistant.`,
       });
 
       // And: second request also has system message prepended (not duplicated from history)
