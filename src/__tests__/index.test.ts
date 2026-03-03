@@ -1,12 +1,29 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 
-const { mockCreateClaudeHandler, mockCreateCodexHandler, mockCreateGeminiHandler, mockCreateBot } =
-  vi.hoisted(() => ({
-    mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
-    mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
-    mockCreateGeminiHandler: vi.fn(() => ({ ask: vi.fn() })),
-    mockCreateBot: vi.fn(),
-  }));
+const {
+  mockCreateClaudeHandler,
+  mockCreateCodexHandler,
+  mockCreateGeminiHandler,
+  mockCreateBot,
+  mockCreateCalendarModeStore,
+  mockCreateCalendarModeController,
+} = vi.hoisted(() => ({
+  mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
+  mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
+  mockCreateGeminiHandler: vi.fn(() => ({ ask: vi.fn() })),
+  mockCreateBot: vi.fn(),
+  mockCreateCalendarModeStore: vi.fn(() => ({
+    isActive: vi.fn(),
+    setActive: vi.fn(),
+    setChannelDefaultCalendar: vi.fn(),
+  })),
+  mockCreateCalendarModeController: vi.fn(() => ({
+    handleCommand: vi.fn().mockResolvedValue(""),
+    handleNaturalLanguageInput: vi
+      .fn()
+      .mockResolvedValue({ handled: false, response: "" }),
+  })),
+}));
 
 vi.mock("../history.js", () => ({
   createSessionStore: vi.fn(() => ({})),
@@ -26,6 +43,14 @@ vi.mock("../gemini.js", () => ({
 
 vi.mock("../bot.js", () => ({
   createBot: mockCreateBot,
+}));
+
+vi.mock("../calendar-store.js", () => ({
+  createCalendarModeStore: mockCreateCalendarModeStore,
+}));
+
+vi.mock("../calendar-mode.js", () => ({
+  createCalendarModeController: mockCreateCalendarModeController,
 }));
 
 vi.mock("../tone.js", () => ({
@@ -304,5 +329,17 @@ describe("agent selection", () => {
     expect(mockCreateClaudeHandler).toHaveBeenCalledTimes(1);
     expect(mockCreateCodexHandler).not.toHaveBeenCalled();
     expect(mockCreateGeminiHandler).not.toHaveBeenCalled();
+  });
+});
+
+describe("bootstrap wiring", () => {
+  it("wires calendar handlers into the Discord bot", async () => {
+    await importIndexWithEnv();
+    expect(mockCreateCalendarModeStore).toHaveBeenCalled();
+    expect(mockCreateCalendarModeController).toHaveBeenCalled();
+    const botArgs = mockCreateBot.mock.calls.at(-1)?.[0];
+    expect(botArgs).toBeDefined();
+    expect(typeof botArgs.onCalendarCommand).toBe("function");
+    expect(typeof botArgs.onCalendarInput).toBe("function");
   });
 });
