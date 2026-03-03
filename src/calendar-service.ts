@@ -20,6 +20,22 @@ export type CalendarEventResult = {
   uid: string;
 };
 
+export type EventSummary = {
+  uid: string;
+  title: string;
+  start: Date;
+  end: Date;
+  calendarName: string;
+};
+
+export type EventUpdate = {
+  title?: string;
+  start?: Date;
+  end?: Date;
+  location?: string;
+  description?: string;
+};
+
 const MONTH_NAMES: readonly string[] = [
   "January",
   "February",
@@ -95,4 +111,153 @@ end tell
 
 function escapeAppleScriptString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ");
+}
+
+export async function listCalendars(): Promise<string[]> {
+  const script = `tell application "Calendar"
+    set calNames to {}
+    repeat with cal in calendars
+        set end of calNames to name of cal
+    end repeat
+    return calNames
+end tell`;
+  const result = await runCommand("osascript", [], { input: script });
+  if (result.exitCode !== 0) {
+    throw new CalendarEventError(result.stderr.trim() || "カレンダー一覧の取得に失敗しました。");
+  }
+  const raw = result.stdout.trim();
+  if (!raw) return [];
+  return raw.split(", ").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
+export async function listEvents(calendarName: string | null, start: Date, end: Date): Promise<EventSummary[]> {
+  const startEpoch = Math.floor(start.getTime() / 1000);
+  const endEpoch = Math.floor(end.getTime() / 1000);
+
+  const calFilter = calendarName
+    ? `set targetCals to {first calendar whose name is "${escapeAppleScriptString(calendarName)}"}`
+    : `set targetCals to every calendar`;
+
+  const script = `set refDate to current date
+set year of refDate to 2001
+set month of refDate to January
+set day of refDate to 1
+set time of refDate to 0
+set appleEpochOffset to 978307200
+
+tell application "Calendar"
+    ${calFilter}
+    set resultLines to {}
+    repeat with cal in targetCals
+        set calName to name of cal
+        repeat with evt in (every event of cal)
+            try
+                set evtStart to (start date of evt)
+                set evtEnd to (end date of evt)
+                set startEpochSec to (evtStart - refDate) + appleEpochOffset
+                set endEpochSec to (evtEnd - refDate) + appleEpochOffset
+                if startEpochSec >= ${startEpoch} and startEpochSec <= ${endEpoch} then
+                    set evtUid to uid of evt
+                    set evtTitle to summary of evt
+                    set resultLines to resultLines & {evtUid & tab & startEpochSec & tab & endEpochSec & tab & evtTitle & tab & calName}
+                end if
+            end try
+        end repeat
+    end repeat
+    return resultLines
+end tell`;
+
+  const result = await runCommand("osascript", [], { input: script });
+  if (result.exitCode !== 0) {
+    throw new CalendarEventError(result.stderr.trim() || "イベント一覧の取得に失敗しました。");
+  }
+  const raw = result.stdout.trim();
+  if (!raw) return [];
+
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const parts = line.split("\t");
+      if (parts.length < 5) return null;
+      const [uid, startStr, endStr, title, calName] = parts;
+      return {
+        uid: uid.trim(),
+        title: title.trim(),
+        start: new Date(parseInt(startStr.trim(), 10) * 1000),
+        end: new Date(parseInt(endStr.trim(), 10) * 1000),
+        calendarName: calName.trim(),
+      } satisfies EventSummary;
+    })
+    .filter((e): e is EventSummary => e !== null);
+}
+
+export async function deleteEvent(calendarName: string, uid: string): Promise<void> {
+  const escapedCal = escapeAppleScriptString(calendarName);
+  const escapedUid = escapeAppleScriptString(uid);
+  const script = `tell application "Calendar"
+    set targetCal to first calendar whose name is "${escapedCal}"
+    set targetEvent to first event of targetCal whose uid is "${escapedUid}"
+    delete targetEvent
+end tell`;
+  const result = await runCommand("osascript", [], { input: script });
+  if (result.exitCode !== 0) {
+    throw new CalendarEventError(result.stderr.trim() || "イベントの削除に失敗しました。");
+  }
+}
+
+export async function updateEvent(calendarName: string, uid: string, updates: EventUpdate): Promise<void> {
+  const escapedCal = escapeAppleScriptString(calendarName);
+  const escapedUid = escapeAppleScriptString(uid);
+
+  const setLines: string[] = [];
+
+  if (updates.title !== undefined) {
+    setLines.push(`set summary of targetEvent to "${escapeAppleScriptString(updates.title)}"`);
+  }
+  if (updates.location !== undefined) {
+    setLines.push(`set location of targetEvent to "${escapeAppleScriptString(updates.location)}"`);
+  }
+  if (updates.description !== undefined) {
+    setLines.push(`set description of targetEvent to "${escapeAppleScriptString(updates.description)}"`);
+  }
+  if (updates.start !== undefined) {
+    const s = updates.start;
+    const monthName = MONTH_NAMES[s.getMonth()];
+    const secs = s.getHours() * 3600 + s.getMinutes() * 60 + s.getSeconds();
+    setLines.push(
+      `set newStart to current date`,
+      `set year of newStart to ${s.getFullYear()}`,
+      `set month of newStart to ${monthName}`,
+      `set day of newStart to ${s.getDate()}`,
+      `set time of newStart to ${secs}`,
+      `set start date of targetEvent to newStart`,
+    );
+  }
+  if (updates.end !== undefined) {
+    const e = updates.end;
+    const monthName = MONTH_NAMES[e.getMonth()];
+    const secs = e.getHours() * 3600 + e.getMinutes() * 60 + e.getSeconds();
+    setLines.push(
+      `set newEnd to current date`,
+      `set year of newEnd to ${e.getFullYear()}`,
+      `set month of newEnd to ${monthName}`,
+      `set day of newEnd to ${e.getDate()}`,
+      `set time of newEnd to ${secs}`,
+      `set end date of targetEvent to newEnd`,
+    );
+  }
+
+  if (setLines.length === 0) return;
+
+  const script = `tell application "Calendar"
+    set targetCal to first calendar whose name is "${escapedCal}"
+    set targetEvent to first event of targetCal whose uid is "${escapedUid}"
+    ${setLines.join("\n    ")}
+end tell`;
+  const result = await runCommand("osascript", [], { input: script });
+  if (result.exitCode !== 0) {
+    throw new CalendarEventError(result.stderr.trim() || "イベントの更新に失敗しました。");
+  }
 }
