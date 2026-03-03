@@ -14,11 +14,9 @@ import { createChannelModeStore } from "./channel-store.js";
 import { createChannelModeController } from "./channel-mode.js";
 import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHandler } from "./agent.js";
 import { config, parseOllamaOptions } from "./config.js";
-import { CommandRouter } from "./commands/router.js";
 import { createClearCommand } from "./commands/clear.js";
-import { handleToneCommand as toneCommandHandler, createToneCommand } from "./commands/tone.js";
-import { createCalendarCommand } from "./commands/calendar.js";
-import { createChannelCommand } from "./commands/channel.js";
+import { handleToneCommand as toneCommandHandler } from "./commands/tone.js";
+import { registerSlashCommands } from "./discord/slash-register.js";
 
 export { parseOllamaOptions };
 
@@ -33,6 +31,10 @@ export function validateEnv(env: Record<string, string | undefined>): {
 
   if (!env.DISCORD_TOKEN) {
     missing.push({ name: "DISCORD_TOKEN", description: "Discord Botのトークン" });
+  }
+
+  if (!env.DISCORD_CLIENT_ID) {
+    missing.push({ name: "DISCORD_CLIENT_ID", description: "Discord Bot の Application ID" });
   }
 
   if (!resolveWorkDir(env)) {
@@ -58,7 +60,7 @@ const { missing } = validateEnv(process.env);
 if (missing.length > 0) {
   const list = missing.map((v) => `  - ${v.name}: ${v.description}`).join("\n");
   process.stderr.write(
-    `⚠ 環境変数が設定されていません:\n\n${list}\n\n開発環境の場合は .env.dev ファイルに設定してください。\n例:\n  DISCORD_TOKEN=your-discord-bot-token\n  AGENT_WORK_DIR=/path/to/work/dir\n  AGENT_TYPE=claude  # 利用可能: ${formatSupportedAgents()}\n`,
+    `⚠ 環境変数が設定されていません:\n\n${list}\n\n開発環境の場合は .env.dev ファイルに設定してください。\n例:\n  DISCORD_TOKEN=your-discord-bot-token\n  DISCORD_CLIENT_ID=your-application-id\n  AGENT_WORK_DIR=/path/to/work/dir\n  AGENT_TYPE=claude  # 利用可能: ${formatSupportedAgents()}\n`,
   );
   process.exit(1);
 }
@@ -97,40 +99,46 @@ export function handleToneCommand(
   return toneCommandHandler(args, deps);
 }
 
-// Wire commands through CommandRouter
-const commandRouter = new CommandRouter();
-commandRouter.register("!clear", createClearCommand(handler));
-commandRouter.register("!tone", createToneCommand({ toneStore, sessionStore }));
-commandRouter.register("!calendar", createCalendarCommand(calendarController));
-commandRouter.register("!channel", createChannelCommand(channelController));
+async function main() {
+  const guildId = config.discord.guildId;
+  if (guildId) {
+    process.stderr.write("スラッシュコマンドを登録中...\n");
+    await registerSlashCommands(config.discord.token, config.discord.clientId, guildId);
+    process.stderr.write("スラッシュコマンド登録完了\n");
+  } else {
+    process.stderr.write("DISCORD_GUILD_ID 未設定: スラッシュコマンド登録をスキップ\n");
+  }
 
-createBot({
-  token: discordToken,
-  onMessage: (prompt, channelId) => {
-    if (calendarStore.isActive(channelId)) {
-      const effectiveCalendar = calendarStore.getEffectiveCalendar(channelId);
-      const calendarContext = [
-        "[カレンダーモード有効: カレンダー操作が必要なときだけツールを使ってください。それ以外の質問には通常通り答えてください。]",
-        effectiveCalendar ? `デフォルトカレンダー：「${effectiveCalendar}」` : null,
-        "mcp__apple-mcpのカレンダーツールを活用してください。",
-        "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-      return handler.ask(`${calendarContext}\n${prompt}`, channelId);
-    }
-    return handler.ask(prompt, channelId);
-  },
-  onToneCommand: (args) => commandRouter.handle(`!tone ${args}`.trimEnd(), "").then(r => r ?? ""),
-  onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
-  onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),
-  onChannelCommand: (args, channelId) => channelController.handleCommand(args, channelId),
-  onClearCommand: (channelId) => {
-    const clearFn = createClearCommand(handler);
-    return clearFn("", channelId);
-  },
-  isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
-});
+  createBot({
+    token: discordToken,
+    onMessage: (prompt, channelId) => {
+      if (calendarStore.isActive(channelId)) {
+        const effectiveCalendar = calendarStore.getEffectiveCalendar(channelId);
+        const calendarContext = [
+          "[カレンダーモード有効: カレンダー操作が必要なときだけツールを使ってください。それ以外の質問には通常通り答えてください。]",
+          effectiveCalendar ? `デフォルトカレンダー：「${effectiveCalendar}」` : null,
+          "mcp__apple-mcpのカレンダーツールを活用してください。",
+          "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return handler.ask(`${calendarContext}\n${prompt}`, channelId);
+      }
+      return handler.ask(prompt, channelId);
+    },
+    onToneCommand: (args) => toneCommandHandler(args, { toneStore, sessionStore }),
+    onCalendarCommand: (args, channelId) => calendarController.handleCommand(args, channelId),
+    onCalendarInput: (content, channelId) => calendarController.handleNaturalLanguageInput(content, channelId),
+    onChannelCommand: (args, channelId) => channelController.handleCommand(args, channelId),
+    onClearCommand: (channelId) => {
+      const clearFn = createClearCommand(handler);
+      return clearFn("", channelId);
+    },
+    isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
+  });
+}
+
+main().catch(err => { process.stderr.write(`Fatal: ${err}\n`); process.exit(1); });
 
 type HandlerDeps = {
   cwd: string;

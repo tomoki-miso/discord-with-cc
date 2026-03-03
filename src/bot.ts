@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import type { Message, TextChannel } from "discord.js";
+import type { Message, TextChannel, ChatInputCommandInteraction } from "discord.js";
 import { splitMessage } from "./discord/message-splitter.js";
 
 const TYPING_INTERVAL_MS = 5000;
@@ -28,9 +28,68 @@ export function createBot(config: BotConfig): Client {
     handleMessage(client, config, message),
   );
 
+  client.on("interactionCreate", (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    handleSlashCommand(config, interaction as ChatInputCommandInteraction).catch((err) => {
+      process.stderr.write(`Error handling slash command: ${err instanceof Error ? err.message : String(err)}\n`);
+    });
+  });
+
   client.login(config.token);
 
   return client;
+}
+
+async function handleSlashCommand(
+  config: BotConfig,
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  const { commandName, channelId } = interaction;
+
+  if (commandName === "clear") {
+    const response = config.onClearCommand?.(channelId) ?? "clear コマンドは設定されていません。";
+    await interaction.reply({ content: response });
+    return;
+  }
+
+  if (commandName === "tone") {
+    if (!config.onToneCommand) {
+      await interaction.reply({ content: "tone コマンドは設定されていません。", ephemeral: true });
+      return;
+    }
+    const sub = interaction.options.getSubcommand();
+    let args = "";
+    if (sub === "reset") args = "reset";
+    else if (sub === "preset") args = interaction.options.getString("name", true);
+    else if (sub === "custom") args = `set ${interaction.options.getString("text", true)}`;
+    // sub === "show" → args = "" (default)
+    await interaction.reply({ content: config.onToneCommand(args) });
+    return;
+  }
+
+  if (commandName === "calendar") {
+    await interaction.deferReply();
+    const sub = interaction.options.getSubcommand();
+    let args = sub;
+    if (sub === "default" || sub === "default-global") {
+      args = `${sub} ${interaction.options.getString("name", true)}`;
+    }
+    try {
+      const response = await config.onCalendarCommand?.(args, channelId) ?? "";
+      if (response.trim().length > 0) await interaction.editReply({ content: response });
+      else await interaction.deleteReply();
+    } catch {
+      await interaction.editReply({ content: "カレンダーコマンドの処理中にエラーが発生しました。" });
+    }
+    return;
+  }
+
+  if (commandName === "channel") {
+    const sub = interaction.options.getSubcommand();
+    const response = config.onChannelCommand?.(sub, channelId) ?? "channel コマンドは設定されていません。";
+    await interaction.reply({ content: response });
+    return;
+  }
 }
 
 async function handleMessage(
@@ -47,43 +106,7 @@ async function handleMessage(
     ? message.content.replace(/<@!?\d+>/g, "").trim()
     : message.content.trim();
 
-  if (prompt.startsWith("!tone") && config.onToneCommand) {
-    const args = prompt.slice("!tone".length).trim();
-    const response = config.onToneCommand(args);
-    await channel.send(response);
-    return;
-  }
-
-  if (prompt.startsWith("!channel") && config.onChannelCommand) {
-    const args = prompt.slice("!channel".length).trim();
-    const response = config.onChannelCommand(args, channel.id);
-    await channel.send(response);
-    return;
-  }
-
-  if (prompt === "!clear" && config.onClearCommand) {
-    const response = config.onClearCommand(channel.id);
-    await channel.send(response);
-    return;
-  }
-
-  if (prompt.startsWith("!calendar") && config.onCalendarCommand) {
-    const args = prompt.slice("!calendar".length).trim();
-    try {
-      const response = await config.onCalendarCommand(args, channel.id);
-      if (response.trim().length > 0) {
-        await channel.send(response);
-      }
-    } catch (error: unknown) {
-      process.stderr.write(
-        `Error handling calendar command: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-      await channel.send("カレンダーコマンドの処理中にエラーが発生しました。").catch(() => {});
-    }
-    return;
-  }
-
-  if (!prompt.startsWith("!") && config.onCalendarInput) {
+  if (config.onCalendarInput) {
     try {
       const calendarResult = await config.onCalendarInput(prompt, channel.id);
       if (calendarResult.handled) {
@@ -97,7 +120,7 @@ async function handleMessage(
         `Error handling calendar input: ${error instanceof Error ? error.message : String(error)}\n`,
       );
       await channel
-        .send("カレンダー処理中にエラーが発生しました。!calendar help で使い方を確認してください。")
+        .send("カレンダー処理中にエラーが発生しました。/calendar help で使い方を確認してください。")
         .catch(() => {});
       return;
     }
@@ -123,4 +146,3 @@ async function handleMessage(
     clearInterval(typingInterval);
   }
 }
-

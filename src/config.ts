@@ -32,6 +32,8 @@ export function parseOllamaOptions(env: Record<string, string | undefined>): Oll
 export const config = {
   discord: {
     get token(): string { return requireEnv("DISCORD_TOKEN"); },
+    get clientId(): string { return requireEnv("DISCORD_CLIENT_ID"); },
+    get guildId(): string | undefined { return process.env.DISCORD_GUILD_ID; },
   },
   agent: {
     get type(): string { return process.env.AGENT_TYPE ?? "claude"; },

@@ -8,6 +8,7 @@ const {
   mockCreateBot,
   mockCreateCalendarModeStore,
   mockCreateCalendarModeController,
+  mockRegisterSlashCommands,
 } = vi.hoisted(() => ({
   mockCreateClaudeHandler: vi.fn(() => ({ ask: vi.fn() })),
   mockCreateCodexHandler: vi.fn(() => ({ ask: vi.fn() })),
@@ -25,6 +26,7 @@ const {
       .fn()
       .mockResolvedValue({ handled: false, response: "" }),
   })),
+  mockRegisterSlashCommands: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../history.js", () => ({
@@ -68,8 +70,14 @@ vi.mock("../tone.js", () => ({
   })),
 }));
 
+vi.mock("../discord/slash-register.js", () => ({
+  registerSlashCommands: mockRegisterSlashCommands,
+}));
+
 const MOCKED_ENV_KEYS = [
   "DISCORD_TOKEN",
+  "DISCORD_CLIENT_ID",
+  "DISCORD_GUILD_ID",
   "AGENT_WORK_DIR",
   "CLAUDE_WORK_DIR",
   "AGENT_TYPE",
@@ -88,8 +96,17 @@ async function importIndexWithEnv(overrides: Record<string, string | undefined> 
   }
 
   process.env.DISCORD_TOKEN = overrides.DISCORD_TOKEN ?? backups.DISCORD_TOKEN ?? "test-token";
+  process.env.DISCORD_CLIENT_ID = overrides.DISCORD_CLIENT_ID ?? backups.DISCORD_CLIENT_ID ?? "test-client-id";
   const workDir = overrides.AGENT_WORK_DIR ?? backups.AGENT_WORK_DIR ?? "/tmp/test";
   process.env.AGENT_WORK_DIR = workDir;
+
+  if (overrides.DISCORD_GUILD_ID !== undefined) {
+    process.env.DISCORD_GUILD_ID = overrides.DISCORD_GUILD_ID;
+  } else if (backups.DISCORD_GUILD_ID !== undefined) {
+    process.env.DISCORD_GUILD_ID = backups.DISCORD_GUILD_ID;
+  } else {
+    delete process.env.DISCORD_GUILD_ID;
+  }
 
   if (overrides.CLAUDE_WORK_DIR !== undefined) {
     process.env.CLAUDE_WORK_DIR = overrides.CLAUDE_WORK_DIR;
@@ -164,23 +181,23 @@ beforeAll(async () => {
 });
 
 describe("validateEnv", () => {
-  it("should report both variables when neither is set", () => {
+  it("should report missing variables when none are set", () => {
     // Given: an environment with no variables set
     const env = {};
 
     // When: validating the environment
     const result = validateEnv(env);
 
-    // Then: both DISCORD_TOKEN and CLAUDE_WORK_DIR are reported as missing
+    // Then: DISCORD_TOKEN, DISCORD_CLIENT_ID, and AGENT_WORK_DIR are reported as missing
     const names = result.missing.map((v) => v.name);
     expect(names).toContain("DISCORD_TOKEN");
+    expect(names).toContain("DISCORD_CLIENT_ID");
     expect(names).toContain("AGENT_WORK_DIR");
-    expect(result.missing).toHaveLength(2);
   });
 
   it("should report only DISCORD_TOKEN when it is missing", () => {
-    // Given: an environment with only AGENT_WORK_DIR set
-    const env = { AGENT_WORK_DIR: "/some/path" };
+    // Given: an environment with DISCORD_CLIENT_ID and AGENT_WORK_DIR set
+    const env = { DISCORD_CLIENT_ID: "client-id", AGENT_WORK_DIR: "/some/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -190,21 +207,33 @@ describe("validateEnv", () => {
     expect(result.missing[0].name).toBe("DISCORD_TOKEN");
   });
 
-  it("should report only CLAUDE_WORK_DIR when it is missing", () => {
-    // Given: an environment with only DISCORD_TOKEN set
-    const env = { DISCORD_TOKEN: "some-token" };
+  it("should report only DISCORD_CLIENT_ID when it is missing", () => {
+    // Given: an environment with DISCORD_TOKEN and AGENT_WORK_DIR set
+    const env = { DISCORD_TOKEN: "some-token", AGENT_WORK_DIR: "/some/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
 
-    // Then: only CLAUDE_WORK_DIR is reported as missing
+    // Then: only DISCORD_CLIENT_ID is reported as missing
+    expect(result.missing).toHaveLength(1);
+    expect(result.missing[0].name).toBe("DISCORD_CLIENT_ID");
+  });
+
+  it("should report only CLAUDE_WORK_DIR when it is missing", () => {
+    // Given: an environment with only DISCORD_TOKEN and DISCORD_CLIENT_ID set
+    const env = { DISCORD_TOKEN: "some-token", DISCORD_CLIENT_ID: "client-id" };
+
+    // When: validating the environment
+    const result = validateEnv(env);
+
+    // Then: only AGENT_WORK_DIR is reported as missing
     expect(result.missing).toHaveLength(1);
     expect(result.missing[0].name).toBe("AGENT_WORK_DIR");
   });
 
   it("should report no missing variables when all are set", () => {
     // Given: an environment with all required variables set
-    const env = { DISCORD_TOKEN: "some-token", AGENT_WORK_DIR: "/some/path" };
+    const env = { DISCORD_TOKEN: "some-token", DISCORD_CLIENT_ID: "client-id", AGENT_WORK_DIR: "/some/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -215,7 +244,7 @@ describe("validateEnv", () => {
 
   it("should accept CLAUDE_WORK_DIR for backwards compatibility", () => {
     // Given: only the legacy variable is set
-    const env = { DISCORD_TOKEN: "token", CLAUDE_WORK_DIR: "/legacy/path" };
+    const env = { DISCORD_TOKEN: "token", DISCORD_CLIENT_ID: "client-id", CLAUDE_WORK_DIR: "/legacy/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -226,7 +255,7 @@ describe("validateEnv", () => {
 
   it("should require OLLAMA_MODEL when AGENT_TYPE=ollama", () => {
     // Given: ollama agent type without OLLAMA_MODEL
-    const env = { DISCORD_TOKEN: "token", AGENT_WORK_DIR: "/path", AGENT_TYPE: "ollama" };
+    const env = { DISCORD_TOKEN: "token", DISCORD_CLIENT_ID: "client-id", AGENT_WORK_DIR: "/path", AGENT_TYPE: "ollama" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -237,7 +266,7 @@ describe("validateEnv", () => {
 
   it("should not require OLLAMA_MODEL when AGENT_TYPE is not ollama", () => {
     // Given: non-ollama agent type without OLLAMA_MODEL
-    const env = { DISCORD_TOKEN: "token", AGENT_WORK_DIR: "/path" };
+    const env = { DISCORD_TOKEN: "token", DISCORD_CLIENT_ID: "client-id", AGENT_WORK_DIR: "/path" };
 
     // When: validating the environment
     const result = validateEnv(env);
@@ -418,6 +447,29 @@ describe("bootstrap wiring", () => {
 
     // Then: returns confirmation message
     expect(result).toBe("このチャンネルのコンテキストをクリアしました。");
+  });
+
+  it("should call registerSlashCommands when DISCORD_GUILD_ID is set", async () => {
+    // Given: DISCORD_GUILD_ID is set
+    await importIndexWithEnv({ DISCORD_GUILD_ID: "guild-123" });
+
+    // Then: registerSlashCommands is called with token, clientId, and guildId
+    await vi.waitFor(() => expect(mockRegisterSlashCommands).toHaveBeenCalled());
+    expect(mockRegisterSlashCommands).toHaveBeenCalledWith(
+      "test-token",
+      "test-client-id",
+      "guild-123",
+    );
+  });
+
+  it("should skip registerSlashCommands when DISCORD_GUILD_ID is not set", async () => {
+    // Given: DISCORD_GUILD_ID is not set
+    await importIndexWithEnv({ DISCORD_GUILD_ID: undefined });
+
+    // When: index.ts is loaded
+    // Then: registerSlashCommands is not called
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(mockRegisterSlashCommands).not.toHaveBeenCalled();
   });
 });
 

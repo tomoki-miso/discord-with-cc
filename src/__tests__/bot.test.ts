@@ -34,6 +34,16 @@ function getMessageCreateHandler(): (message: unknown) => Promise<void> {
   return call[1] as (message: unknown) => Promise<void>;
 }
 
+function getInteractionCreateHandler(): (interaction: unknown) => void {
+  const call = mockOn.mock.calls.find(
+    (args: unknown[]) => args[0] === "interactionCreate",
+  );
+  if (!call) {
+    throw new Error("interactionCreate handler not registered");
+  }
+  return call[1] as (interaction: unknown) => void;
+}
+
 function createMockMessage(overrides: Record<string, unknown> = {}) {
   return {
     author: { bot: false },
@@ -45,6 +55,23 @@ function createMockMessage(overrides: Record<string, unknown> = {}) {
       send: vi.fn().mockResolvedValue(undefined),
       sendTyping: vi.fn().mockResolvedValue(undefined),
       id: "channel-123",
+    },
+    ...overrides,
+  };
+}
+
+function createMockInteraction(overrides: Record<string, unknown> = {}) {
+  return {
+    isChatInputCommand: vi.fn().mockReturnValue(true),
+    commandName: "clear",
+    channelId: "channel-123",
+    reply: vi.fn().mockResolvedValue(undefined),
+    deferReply: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue(undefined),
+    deleteReply: vi.fn().mockResolvedValue(undefined),
+    options: {
+      getSubcommand: vi.fn().mockReturnValue("on"),
+      getString: vi.fn().mockReturnValue(null),
     },
     ...overrides,
   };
@@ -98,6 +125,17 @@ describe("createBot", () => {
 
       // Then: a messageCreate handler is registered
       expect(mockOn).toHaveBeenCalledWith("messageCreate", expect.any(Function));
+    });
+
+    it("should register an interactionCreate event handler", () => {
+      // Given: a bot configuration
+      const config = { token: "test-token", onMessage };
+
+      // When: creating the bot
+      createBot(config);
+
+      // Then: an interactionCreate handler is registered
+      expect(mockOn).toHaveBeenCalledWith("interactionCreate", expect.any(Function));
     });
   });
 
@@ -307,163 +345,6 @@ describe("createBot", () => {
     });
   });
 
-  describe("tone command routing", () => {
-    it("should route !tone command to onToneCommand when provided", async () => {
-      // Given: a bot with onToneCommand handler
-      const onToneCommand = vi.fn().mockReturnValue("Tone info");
-      createBot({ token: "test-token", onMessage, onToneCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !tone casual",
-      });
-
-      // When: the handler processes a !tone message
-      await handler(message);
-
-      // Then: onToneCommand is called with args, onMessage is not called
-      expect(onToneCommand).toHaveBeenCalledWith("casual");
-      expect(onMessage).not.toHaveBeenCalled();
-      expect(message.channel.send).toHaveBeenCalledWith("Tone info");
-    });
-
-    it("should route !tone without args to onToneCommand", async () => {
-      // Given: a bot with onToneCommand handler
-      const onToneCommand = vi.fn().mockReturnValue("Current tone: default");
-      createBot({ token: "test-token", onMessage, onToneCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !tone",
-      });
-
-      // When: the handler processes a !tone message
-      await handler(message);
-
-      // Then: onToneCommand is called with empty string
-      expect(onToneCommand).toHaveBeenCalledWith("");
-      expect(onMessage).not.toHaveBeenCalled();
-    });
-
-    it("should route !tone set custom text to onToneCommand", async () => {
-      // Given: a bot with onToneCommand handler
-      const onToneCommand = vi.fn().mockReturnValue("Custom tone set.");
-      createBot({ token: "test-token", onMessage, onToneCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !tone set Be a pirate",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: onToneCommand receives the full args
-      expect(onToneCommand).toHaveBeenCalledWith("set Be a pirate");
-    });
-
-    it("should fall through to onMessage when onToneCommand is not provided", async () => {
-      // Given: a bot without onToneCommand handler
-      createBot({ token: "test-token", onMessage });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !tone casual",
-      });
-
-      // When: the handler processes a !tone message
-      await handler(message);
-
-      // Then: onMessage is called with the full prompt
-      expect(onMessage).toHaveBeenCalledWith("!tone casual", "channel-123");
-    });
-  });
-
-  describe("channel command routing", () => {
-    it("should route !channel command to onChannelCommand when provided", async () => {
-      // Given: a bot with onChannelCommand handler
-      const onChannelCommand = vi.fn().mockReturnValue("常時応答モードに設定しました。");
-      createBot({ token: "test-token", onMessage, onChannelCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !channel on",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: channel command handler is used and onMessage is not called
-      expect(onChannelCommand).toHaveBeenCalledWith("on", "channel-123");
-      expect(onMessage).not.toHaveBeenCalled();
-      expect(message.channel.send).toHaveBeenCalledWith("常時応答モードに設定しました。");
-    });
-
-    it("should fall through to onMessage when onChannelCommand is not provided", async () => {
-      // Given: a bot without channel command handler
-      createBot({ token: "test-token", onMessage });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !channel on",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: onMessage receives the command text as usual
-      expect(onMessage).toHaveBeenCalledWith("!channel on", "channel-123");
-    });
-
-    it("should route !channel command from always-on channel without mention", async () => {
-      // Given: a bot with always-on channel and channel command handler
-      const isAlwaysOnChannel = vi.fn().mockReturnValue(true);
-      const onChannelCommand = vi.fn().mockReturnValue("常時応答モードを解除しました。");
-      createBot({ token: "test-token", onMessage, onChannelCommand, isAlwaysOnChannel });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        mentions: { has: vi.fn().mockReturnValue(false) },
-        content: "!channel off",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: channel command handler is used
-      expect(onChannelCommand).toHaveBeenCalledWith("off", "channel-123");
-      expect(onMessage).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("calendar command routing", () => {
-    it("should route !calendar command when handler is provided", async () => {
-      // Given: a bot with onCalendarCommand handler
-      const onCalendarCommand = vi.fn().mockResolvedValue("mode on");
-      createBot({ token: "test-token", onMessage, onCalendarCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !calendar on",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: calendar command handler is used
-      expect(onCalendarCommand).toHaveBeenCalledWith("on", "channel-123");
-      expect(onMessage).not.toHaveBeenCalled();
-      expect(message.channel.send).toHaveBeenCalledWith("mode on");
-    });
-
-    it("should fall through when onCalendarCommand is not provided", async () => {
-      // Given: a bot without calendar command handler
-      createBot({ token: "test-token", onMessage });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !calendar on",
-      });
-
-      // When: the handler processes the message
-      await handler(message);
-
-      // Then: onMessage receives the command text as usual
-      expect(onMessage).toHaveBeenCalledWith("!calendar on", "channel-123");
-    });
-  });
-
   describe("calendar mode interception", () => {
     it("should intercept natural language input when handler marks as handled", async () => {
       // Given: a bot with calendar input handler that claims the message
@@ -534,38 +415,201 @@ describe("createBot", () => {
     });
   });
 
-  describe("clear command routing", () => {
-    it("should route !clear command to onClearCommand when provided", async () => {
-      // Given: a bot with onClearCommand handler
+  describe("slash command handling", () => {
+    it("should reply with clear confirmation for /clear command", async () => {
+      // Given: a bot with onClearCommand
       const onClearCommand = vi.fn().mockReturnValue("このチャンネルのコンテキストをクリアしました。");
       createBot({ token: "test-token", onMessage, onClearCommand });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !clear",
-      });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({ commandName: "clear" });
 
-      // When: the handler processes a !clear message
-      await handler(message);
+      // When: a /clear interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
 
-      // Then: onClearCommand is called with channelId, onMessage is not called
+      // Then: reply is sent with the response
       expect(onClearCommand).toHaveBeenCalledWith("channel-123");
-      expect(onMessage).not.toHaveBeenCalled();
-      expect(message.channel.send).toHaveBeenCalledWith("このチャンネルのコンテキストをクリアしました。");
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "このチャンネルのコンテキストをクリアしました。" });
     });
 
-    it("should fall through to onMessage when onClearCommand is not provided", async () => {
-      // Given: a bot without onClearCommand handler
+    it("should reply with fallback message when onClearCommand is not set", async () => {
+      // Given: a bot without onClearCommand
       createBot({ token: "test-token", onMessage });
-      const handler = getMessageCreateHandler();
-      const message = createMockMessage({
-        content: "<@12345> !clear",
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({ commandName: "clear" });
+
+      // When: a /clear interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: fallback message is returned
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "clear コマンドは設定されていません。" });
+    });
+
+    it("should handle /tone show subcommand with empty args", async () => {
+      // Given: a bot with onToneCommand
+      const onToneCommand = vi.fn().mockReturnValue("現在のトーン: default");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "tone",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("show"),
+          getString: vi.fn().mockReturnValue(null),
+        },
       });
 
-      // When: the handler processes a !clear message
-      await handler(message);
+      // When: a /tone show interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
 
-      // Then: onMessage is called with the command text
-      expect(onMessage).toHaveBeenCalledWith("!clear", "channel-123");
+      // Then: onToneCommand called with empty args
+      expect(onToneCommand).toHaveBeenCalledWith("");
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "現在のトーン: default" });
+    });
+
+    it("should handle /tone reset subcommand", async () => {
+      // Given: a bot with onToneCommand
+      const onToneCommand = vi.fn().mockReturnValue("デフォルトにリセットしました。");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "tone",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("reset"),
+          getString: vi.fn().mockReturnValue(null),
+        },
+      });
+
+      // When: a /tone reset interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onToneCommand called with "reset"
+      expect(onToneCommand).toHaveBeenCalledWith("reset");
+    });
+
+    it("should handle /tone preset subcommand with name option", async () => {
+      // Given: a bot with onToneCommand
+      const onToneCommand = vi.fn().mockReturnValue("トーンを casual に変更しました。");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "tone",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("preset"),
+          getString: vi.fn().mockReturnValue("casual"),
+        },
+      });
+
+      // When: a /tone preset interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onToneCommand called with preset name
+      expect(onToneCommand).toHaveBeenCalledWith("casual");
+    });
+
+    it("should handle /tone custom subcommand with text option", async () => {
+      // Given: a bot with onToneCommand
+      const onToneCommand = vi.fn().mockReturnValue("カスタムトーンを設定しました。");
+      createBot({ token: "test-token", onMessage, onToneCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "tone",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("custom"),
+          getString: vi.fn((name: string) => name === "text" ? "海賊のように話してください" : null),
+        },
+      });
+
+      // When: a /tone custom interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onToneCommand called with "set <text>"
+      expect(onToneCommand).toHaveBeenCalledWith("set 海賊のように話してください");
+    });
+
+    it("should deferReply for /calendar command", async () => {
+      // Given: a bot with onCalendarCommand
+      const onCalendarCommand = vi.fn().mockResolvedValue("カレンダーモードを開始しました。");
+      createBot({ token: "test-token", onMessage, onCalendarCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "calendar",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("on"),
+          getString: vi.fn().mockReturnValue(null),
+        },
+      });
+
+      // When: a /calendar on interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.deferReply).toHaveBeenCalled());
+
+      // Then: deferReply is called first
+      expect(interaction.deferReply).toHaveBeenCalled();
+      await vi.waitFor(() => expect(interaction.editReply).toHaveBeenCalled());
+      expect(onCalendarCommand).toHaveBeenCalledWith("on", "channel-123");
+    });
+
+    it("should pass default name arg for /calendar default", async () => {
+      // Given: a bot with onCalendarCommand
+      const onCalendarCommand = vi.fn().mockResolvedValue("デフォルトカレンダーを設定しました。");
+      createBot({ token: "test-token", onMessage, onCalendarCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "calendar",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("default"),
+          getString: vi.fn().mockReturnValue("仕事"),
+        },
+      });
+
+      // When: a /calendar default interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(onCalendarCommand).toHaveBeenCalled());
+
+      // Then: args include the calendar name
+      expect(onCalendarCommand).toHaveBeenCalledWith("default 仕事", "channel-123");
+    });
+
+    it("should handle /channel on subcommand", async () => {
+      // Given: a bot with onChannelCommand
+      const onChannelCommand = vi.fn().mockReturnValue("常時応答モードに設定しました。");
+      createBot({ token: "test-token", onMessage, onChannelCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "channel",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("on"),
+          getString: vi.fn().mockReturnValue(null),
+        },
+      });
+
+      // When: a /channel on interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onChannelCommand called with "on"
+      expect(onChannelCommand).toHaveBeenCalledWith("on", "channel-123");
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "常時応答モードに設定しました。" });
+    });
+
+    it("should ignore non-chat-input-command interactions", () => {
+      // Given: a bot and a non-slash-command interaction
+      createBot({ token: "test-token", onMessage });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        isChatInputCommand: vi.fn().mockReturnValue(false),
+      });
+
+      // When: a non-command interaction arrives
+      interactionHandler(interaction);
+
+      // Then: reply is not called
+      expect(interaction.reply).not.toHaveBeenCalled();
     });
   });
 });
