@@ -7,15 +7,18 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx --env-file=.env.dev src/index.ts",
-    "claude": "tsx --env-file=.env.claude --env-file=.env.dev src/index.ts",
-    "qwen": "tsx --env-file=.env.qwen --env-file=.env.dev src/index.ts",
+    "claude": "AGENT_TYPE=claude tsx --env-file=.env.dev src/index.ts",
+    "qwen": "AGENT_TYPE=ollama tsx --env-file=.env.dev src/index.ts",
+    "codex": "AGENT_TYPE=codex tsx --env-file=.env.dev src/index.ts",
+    "gemini": "AGENT_TYPE=gemini tsx --env-file=.env.dev src/index.ts",
     "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
     "@modelcontextprotocol/sdk": "latest",
     "chrono-node": "^2.9.0",
-    "discord.js": "^14"
+    "discord.js": "^14",
+    "tinyglobby": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

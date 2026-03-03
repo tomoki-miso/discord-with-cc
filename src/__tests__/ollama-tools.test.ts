@@ -26,11 +26,16 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
 // ---- fs/promises mocks ----
 const mockReadFile = vi.fn();
 const mockWriteFile = vi.fn();
-const mockGlob = vi.fn();
 
 vi.mock("node:fs/promises", () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
+}));
+
+// ---- tinyglobby mock ----
+const mockGlob = vi.fn();
+
+vi.mock("tinyglobby", () => ({
   glob: (...args: unknown[]) => mockGlob(...args),
 }));
 
@@ -69,11 +74,9 @@ function makeConfig(mcpServers: Record<string, McpServerConfig> = {}) {
   return { mcpServers, cwd: "/test" };
 }
 
-// Helper: make mockGlob return an async iterable of paths
+// Helper: make mockGlob return a resolved array (tinyglobby returns Promise<string[]>)
 function mockGlobReturning(paths: string[]) {
-  mockGlob.mockImplementation(async function* () {
-    for (const p of paths) yield p;
-  });
+  mockGlob.mockResolvedValue(paths);
 }
 
 // Helper: make mockExecImpl call its callback with stdout

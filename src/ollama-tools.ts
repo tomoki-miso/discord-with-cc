@@ -1,4 +1,5 @@
-import { readFile, writeFile, glob } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { glob } from "tinyglobby";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -302,10 +303,7 @@ export function createOllamaToolManager(config: OllamaToolManagerConfig): Ollama
           }
 
           case "glob_files": {
-            const results: string[] = [];
-            for await (const match of glob(args.pattern as string, { cwd: config.cwd })) {
-              results.push(match);
-            }
+            const results = await glob(args.pattern as string, { cwd: config.cwd });
             return results.join("\n") || "No files found";
           }
 
