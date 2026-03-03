@@ -17,15 +17,15 @@ describe("createToneStore", () => {
       expect(tone).toEqual({ type: "preset", name: "default" });
     });
 
-    it("should return empty system prompt for default preset", () => {
+    it("should return Japanese instruction for default preset", () => {
       // Given: a fresh tone store
       const store = createToneStore();
 
       // When: getting the system prompt
       const prompt = store.getSystemPrompt();
 
-      // Then: it is an empty string
-      expect(prompt).toBe("");
+      // Then: it instructs the model to respond in Japanese
+      expect(prompt).toBe("必ず日本語で返答してください。");
     });
   });
 

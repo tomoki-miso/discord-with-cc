@@ -9,7 +9,7 @@ export type TonePreset = {
 const TONE_PRESETS: Record<string, TonePreset> = {
   default: {
     name: "default",
-    prompt: "",
+    prompt: "必ず日本語で返答してください。",
   },
   casual: {
     name: "casual",
