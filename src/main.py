@@ -58,7 +58,7 @@ def main() -> None:
     history_store = HistoryStore()
     tone_store = ToneStore(default=config.DEFAULT_TONE)
     calendar_store = CalendarStore()
-    channel_store = ChannelStore()
+    channel_store = ChannelStore(path=config.CHANNELS_FILE)
     schedule_store = ScheduleStore()
     whimsy_store = WhimsyStore()
     no_emoji_store = NoEmojiStore()
