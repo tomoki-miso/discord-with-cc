@@ -1,6 +1,10 @@
 import os
 from dotenv import load_dotenv
 
+# ENV_FILE で指定されたファイル（デフォルト .env.dev）→ .env の順で読み込む
+_env_file = os.getenv("ENV_FILE", ".env.dev")
+if _env_file:
+    load_dotenv(_env_file)
 load_dotenv()
 
 

@@ -75,11 +75,14 @@ def main() -> None:
         print(f"Scheduled [{channel_id}]: {response}")
 
     schedule_runner = ScheduleRunner(send_message=send_scheduled, store=schedule_store)
-    schedule_runner.start()
+
+    async def on_ready() -> None:
+        schedule_runner.start()
 
     bot = create_bot(
         on_mention=on_mention,
         on_message=reaction_handler.handle,
+        on_ready=on_ready,
     )
     bot.run(config.DISCORD_TOKEN)
 

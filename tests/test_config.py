@@ -3,6 +3,7 @@ import pytest
 
 
 def test_discord_token_required(monkeypatch):
+    monkeypatch.setenv("ENV_FILE", "")  # .env.dev を読まない
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
     with pytest.raises(ValueError, match="DISCORD_TOKEN"):
         import importlib
@@ -11,6 +12,7 @@ def test_discord_token_required(monkeypatch):
 
 
 def test_agent_type_defaults_to_qwen(monkeypatch):
+    monkeypatch.setenv("ENV_FILE", "")  # .env.dev を読まない
     monkeypatch.setenv("DISCORD_TOKEN", "test-token")
     monkeypatch.setenv("AGENT_WORK_DIR", "/tmp")
     monkeypatch.delenv("AGENT_TYPE", raising=False)
