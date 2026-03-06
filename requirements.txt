@@ -1,0 +1,7 @@
+discord.py>=2.3
+qwen-agent[mcp]>=0.0.10
+anthropic>=0.40
+google-genai>=1.0
+apscheduler>=3.10
+dateparser>=1.2
+python-dotenv>=1.0
