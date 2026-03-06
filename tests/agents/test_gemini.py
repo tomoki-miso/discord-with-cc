@@ -158,3 +158,23 @@ async def test_google_search_tool_configured(agent):
         isinstance(t, types.Tool) and t.google_search is not None
         for t in tools
     )
+
+
+async def test_long_url_shown_without_link(agent):
+    # Given: 500文字を超えるURL（Vertex AI リダイレクトURL模倣）
+    mock_chat = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "応答テキスト"
+    chunk = MagicMock()
+    chunk.web.uri = "https://vertexaisearch.cloud.google.com/" + "a-k" * 200
+    chunk.web.title = "長いURLのサイト"
+    mock_response.candidates[0].grounding_metadata.grounding_chunks = [chunk]
+    mock_chat.send_message.return_value = mock_response
+    agent._client.chats.create.return_value = mock_chat
+
+    result = await agent.ask("何か？", "ch1")
+
+    # Then: タイトルは表示、URLはリンクにならない
+    assert "**参考:**" in result
+    assert "長いURLのサイト" in result
+    assert "vertexaisearch.cloud.google.com" not in result

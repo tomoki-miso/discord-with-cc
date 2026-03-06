@@ -5,6 +5,9 @@ from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
 
 
+_MAX_URL_LEN = 500
+
+
 class GeminiAgent(AgentHandler):
     def __init__(self, api_key: str, model: str, system_prompt: str) -> None:
         self._client = genai.Client(api_key=api_key)
@@ -55,9 +58,13 @@ class GeminiAgent(AgentHandler):
                 sources: list[str] = []
                 for chunk in chunks:
                     if chunk.web and chunk.web.uri and chunk.web.uri not in seen:
-                        seen.add(chunk.web.uri)
-                        title = chunk.web.title or chunk.web.uri
-                        sources.append(f"- [{title}](<{chunk.web.uri}>)")
+                        uri = chunk.web.uri
+                        seen.add(uri)
+                        title = chunk.web.title or uri
+                        if len(uri) <= _MAX_URL_LEN:
+                            sources.append(f"- [{title}](<{uri}>)")
+                        else:
+                            sources.append(f"- {title}")
 
                 if sources:
                     text += "\n\n**参考:**\n" + "\n".join(sources)

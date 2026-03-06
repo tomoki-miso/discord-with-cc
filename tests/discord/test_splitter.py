@@ -31,3 +31,19 @@ def test_very_long_word_is_hard_split():
     text = "a" * 2500
     parts = split_message(text, limit=2000)
     assert all(len(p) <= 2000 for p in parts)
+
+
+def test_no_split_within_markdown_link():
+    # Given: limitがMarkdownリンクの途中に当たるテキスト
+    # prefix=7文字、link=33文字（[サイト名](<url>)）、total=40文字
+    prefix = "前置きテキスト"  # 7文字
+    url = "https://example.com/abc"  # 23文字
+    text = f"{prefix}[サイト名](<{url}>)"
+    limit = 38  # 7 < 38 < 40 → limitがリンクの途中に入る
+
+    # When: 分割する
+    parts = split_message(text, limit=limit)
+
+    # Then: リンク全体が破損しないこと（同じパート内に [title](<url>) が存在）
+    link_text = f"[サイト名](<{url}>)"
+    assert any(link_text in p for p in parts)
