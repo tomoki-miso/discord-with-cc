@@ -16,6 +16,7 @@ class ChannelStore:
 
     def _save(self) -> None:
         tmp = self._path + ".tmp"
+        # abspath: 相対パスの場合 dirname が空文字になるのを防ぐ
         os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
         with open(tmp, "w") as f:
             json.dump({"allowed": sorted(self._channels)}, f)
