@@ -6,3 +6,8 @@ dist/
 .claude/settings.local.json
 .worktrees/
 secrets/gcp-oauth.keys.json
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
