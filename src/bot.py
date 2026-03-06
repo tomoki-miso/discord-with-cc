@@ -41,13 +41,19 @@ class DiscordBot:
         if message.author.bot:
             return
 
+        async def _run_safe(coro: object, label: str) -> None:
+            try:
+                await coro  # type: ignore[misc]
+            except Exception as e:
+                print(f"[{label}] error: {e}")
+
         # リアクション処理（全メッセージ対象、非同期）
-        asyncio.create_task(self._on_message_reaction(message))
+        asyncio.create_task(_run_safe(self._on_message_reaction(message), "reaction"))
 
         # メンション処理
         if self._client.user not in message.mentions:
             if self._on_random_message:
-                asyncio.create_task(self._on_random_message(message))
+                asyncio.create_task(_run_safe(self._on_random_message(message), "whimsy"))
             return
 
         prompt = re.sub(r"<@!?\d+>", "", message.content).strip()
