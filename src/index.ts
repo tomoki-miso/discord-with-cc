@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { TextChannel } from "discord.js";
 import { createSessionStore } from "./history.js";
 import { createClaudeHandler } from "./claude.js";
 import { createCodexHandler } from "./codex.js";
@@ -16,6 +17,10 @@ import { normalizeAgentType, formatSupportedAgents, type AgentType, type AgentHa
 import { config, parseOllamaOptions } from "./config.js";
 import { createClearCommand } from "./commands/clear.js";
 import { handleToneCommand as toneCommandHandler } from "./commands/tone.js";
+import { handleScheduleCommand } from "./commands/schedule.js";
+import { createScheduleStore } from "./schedule-store.js";
+import { createScheduleRunner } from "./schedule-runner.js";
+import { splitMessage } from "./discord/message-splitter.js";
 import { registerSlashCommands } from "./discord/slash-register.js";
 
 export { parseOllamaOptions };
@@ -109,7 +114,9 @@ async function main() {
     process.stderr.write("DISCORD_GUILD_ID 未設定: スラッシュコマンド登録をスキップ\n");
   }
 
-  createBot({
+  const scheduleStore = createScheduleStore({ filePath: join(workDir, "schedules.json") });
+
+  const client = createBot({
     token: discordToken,
     onMessage: (prompt, channelId) => {
       if (calendarStore.isActive(channelId)) {
@@ -135,7 +142,21 @@ async function main() {
       return clearFn("", channelId);
     },
     isAlwaysOnChannel: (channelId) => channelStore.isAlwaysOn(channelId),
+    onScheduleCommand: (sub, opts, channelId) =>
+      handleScheduleCommand(sub, opts, channelId, { store: scheduleStore }),
   });
+
+  const scheduleRunner = createScheduleRunner({
+    store: scheduleStore,
+    onFire: async (channelId, prompt) => {
+      const ch = await client.channels.fetch(channelId) as TextChannel | null;
+      if (!ch || typeof ch.send !== "function") return;
+      const response = await handler.ask(prompt, channelId);
+      for (const chunk of splitMessage(response)) await ch.send(chunk);
+    },
+  });
+
+  client.once("ready", () => scheduleRunner.start());
 }
 
 main().catch(err => { process.stderr.write(`Fatal: ${err}\n`); process.exit(1); });

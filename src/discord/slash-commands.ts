@@ -52,4 +52,25 @@ export const SLASH_COMMAND_DEFINITIONS = [
     .addSubcommand(sub => sub.setName("off").setDescription("常時応答モードを終了します"))
     .addSubcommand(sub => sub.setName("status").setDescription("現在の状態を表示します")),
 
+
+  new SlashCommandBuilder()
+    .setName("schedule")
+    .setDescription("定期実行タスクを管理します")
+    .addSubcommand(sub =>
+      sub.setName("add").setDescription("定期タスクを追加します")
+        .addStringOption(opt =>
+          opt.setName("expression").setDescription("スケジュール式（例: 毎朝9時、毎週月曜12時）").setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName("prompt").setDescription("AIに送信するプロンプト").setRequired(true)
+        )
+    )
+    .addSubcommand(sub => sub.setName("list").setDescription("このチャンネルのスケジュール一覧を表示します"))
+    .addSubcommand(sub =>
+      sub.setName("delete").setDescription("スケジュールを削除します")
+        .addStringOption(opt =>
+          opt.setName("id").setDescription("削除するスケジュールのID（先頭8文字でも可）").setRequired(true)
+        )
+    ),
+
 ].map(cmd => cmd.toJSON());

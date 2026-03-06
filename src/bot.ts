@@ -13,6 +13,11 @@ export type BotConfig = {
   onChannelCommand?: (args: string, channelId: string) => string;
   onClearCommand?: (channelId: string) => string;
   isAlwaysOnChannel?: (channelId: string) => boolean;
+  onScheduleCommand?: (
+    sub: string,
+    options: { expression?: string; prompt?: string; id?: string },
+    channelId: string,
+  ) => string;
 };
 
 export function createBot(config: BotConfig): Client {
@@ -87,6 +92,20 @@ async function handleSlashCommand(
   if (commandName === "channel") {
     const sub = interaction.options.getSubcommand();
     const response = config.onChannelCommand?.(sub, channelId) ?? "channel コマンドは設定されていません。";
+    await interaction.reply({ content: response });
+    return;
+  }
+
+  if (commandName === "schedule") {
+    const sub = interaction.options.getSubcommand();
+    const opts: { expression?: string; prompt?: string; id?: string } = {};
+    if (sub === "add") {
+      opts.expression = interaction.options.getString("expression", true);
+      opts.prompt = interaction.options.getString("prompt", true);
+    } else if (sub === "delete") {
+      opts.id = interaction.options.getString("id", true);
+    }
+    const response = config.onScheduleCommand?.(sub, opts, channelId) ?? "schedule コマンドは設定されていません。";
     await interaction.reply({ content: response });
     return;
   }
