@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import anthropic
 from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
@@ -16,9 +17,19 @@ class ClaudeAgent(AgentHandler):
         self._client = anthropic.Anthropic(api_key=api_key)
         self._store = HistoryStore()
 
-    async def ask(self, prompt: str, channel_id: str) -> str:
+    async def ask(self, prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
         history = self._store.get(channel_id)
-        messages = history + [{"role": "user", "content": prompt}]
+
+        if images:
+            content: list = [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": base64.b64encode(data).decode()}}
+                for data, mime_type in images
+            ]
+            content.append({"type": "text", "text": prompt})
+        else:
+            content = prompt  # type: ignore[assignment]
+
+        messages = history + [{"role": "user", "content": content}]
 
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(

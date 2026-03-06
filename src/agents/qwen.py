@@ -25,7 +25,7 @@ class QwenAgent(AgentHandler):
             function_list=tools or ["web_search", "web_extractor"],
         )
 
-    async def ask(self, prompt: str, channel_id: str) -> str:
+    async def ask(self, prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
         history = self._history.get(channel_id, [])
         messages = history + [{"role": "user", "content": prompt}]
 

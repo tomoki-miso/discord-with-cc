@@ -4,7 +4,7 @@ from typing import Callable, Awaitable
 import discord
 from src.discord.splitter import split_message
 
-OnMentionFn = Callable[[str, str], Awaitable[str]]
+OnMentionFn = Callable[[str, str, "list[tuple[bytes, str]] | None"], Awaitable[str]]
 OnMessageFn = Callable[[object], Awaitable[None]]
 OnReadyFn = Callable[[], Awaitable[None]]
 
@@ -49,8 +49,16 @@ class DiscordBot:
         if not prompt:
             return
 
+        images: list[tuple[bytes, str]] = []
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith("image/"):
+                images.append((await attachment.read(), attachment.content_type))
+
         async with message.channel.typing():
-            response = await self._on_mention(prompt, str(message.channel.id))
+            try:
+                response = await self._on_mention(prompt, str(message.channel.id), images or None)
+            except Exception as e:
+                response = f"エラーが発生しました: {e}"
 
         for part in split_message(response):
             await message.channel.send(part)

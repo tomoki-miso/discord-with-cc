@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 
 class AgentHandler(ABC):
     @abstractmethod
-    async def ask(self, prompt: str, channel_id: str) -> str:
-        """プロンプトを受け取り、応答文字列を返す"""
+    async def ask(self, prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
+        """プロンプトを受け取り、応答文字列を返す。images は (bytes, mime_type) のリスト"""
         ...
 
     @abstractmethod

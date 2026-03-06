@@ -7,7 +7,7 @@ class CodexAgent(AgentHandler):
         self._work_dir = work_dir
         self._codex_bin = codex_bin
 
-    async def ask(self, prompt: str, channel_id: str) -> str:
+    async def ask(self, prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
         proc = await asyncio.create_subprocess_exec(
             self._codex_bin, "exec", "--full-auto", prompt,
             cwd=self._work_dir,
