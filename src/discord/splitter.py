@@ -1,4 +1,7 @@
 def split_message(text: str, limit: int = 2000) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
     if len(text) <= limit:
         return [text]
 

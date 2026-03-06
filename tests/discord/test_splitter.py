@@ -19,6 +19,14 @@ def test_split_preserves_content():
     assert "".join(parts).replace("\n", "") == "abcde"
 
 
+def test_empty_string_returns_empty_list():
+    assert split_message("") == []
+
+
+def test_whitespace_only_returns_empty_list():
+    assert split_message("   \n  ") == []
+
+
 def test_very_long_word_is_hard_split():
     text = "a" * 2500
     parts = split_message(text, limit=2000)
