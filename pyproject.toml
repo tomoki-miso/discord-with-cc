@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discord-with-cc"
+version = "2.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py>=2.3",
+    "qwen-agent[mcp]>=0.0.10",
+    "anthropic>=0.40",
+    "google-generativeai>=0.8",
+    "apscheduler>=3.10",
+    "dateparser>=1.2",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
