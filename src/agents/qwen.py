@@ -22,7 +22,7 @@ class QwenAgent(AgentHandler):
         self._assistant = Assistant(
             llm=llm_config,
             system_message=system_prompt,
-            function_list=tools or ["web_search", "web_browser"],
+            function_list=tools or ["web_search", "web_extractor"],
         )
 
     async def ask(self, prompt: str, channel_id: str) -> str:
