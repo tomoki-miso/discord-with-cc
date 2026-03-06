@@ -1,24 +1,84 @@
 import asyncio
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
 
 
 class GeminiAgent(AgentHandler):
     def __init__(self, api_key: str, model: str, system_prompt: str) -> None:
-        genai.configure(api_key=api_key)
-        self._model_client = genai.GenerativeModel(
-            model_name=model,
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+        self._config = types.GenerateContentConfig(
             system_instruction=system_prompt,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
         )
         self._store = HistoryStore()
 
-    async def ask(self, prompt: str, channel_id: str) -> str:
+    async def ask(
+        self,
+        prompt: str,
+        channel_id: str,
+        images: list[tuple[bytes, str]] | None = None,
+    ) -> str:
+        history: list[types.Content] = self._store.get(channel_id)
+
+        parts: list[types.Part] = []
+        if images:
+            parts.extend(
+                types.Part(inline_data=types.Blob(mime_type=mime_type, data=data))
+                for data, mime_type in images
+            )
+        parts.append(types.Part(text=prompt))
+
+        def _call() -> str:
+            chat = self._client.chats.create(
+                model=self._model,
+                config=self._config,
+                history=history,
+            )
+            response = chat.send_message(parts)
+            try:
+                text = response.text or ""
+            except ValueError:
+                # Gemini の安全フィルターでブロックされた場合
+                return "（コンテンツフィルターにより応答できませんでした）"
+
+            # 検索グラウンディングの引用元を追記
+            gm = (
+                response.candidates[0].grounding_metadata
+                if response.candidates else None
+            )
+            if gm:
+                chunks = gm.grounding_chunks or []
+                seen: set[str] = set()
+                sources: list[str] = []
+                for chunk in chunks:
+                    if chunk.web and chunk.web.uri and chunk.web.uri not in seen:
+                        seen.add(chunk.web.uri)
+                        title = chunk.web.title or chunk.web.uri
+                        sources.append(f"- [{title}](<{chunk.web.uri}>)")
+
+                if sources:
+                    text += "\n\n**参考:**\n" + "\n".join(sources)
+                elif gm.web_search_queries:
+                    # AI Developer API ではURLが取得できないため検索クエリを表示
+                    queries = "、".join(f"`{q}`" for q in gm.web_search_queries)
+                    text += f"\n\n🔍 **検索ワード:** {queries}"
+
+            return text
+
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None, lambda: self._model_client.generate_content(prompt)
+        text = await loop.run_in_executor(None, _call)
+
+        self._store.set(
+            channel_id,
+            history + [
+                types.Content(role="user", parts=[types.Part(text=prompt)]),
+                types.Content(role="model", parts=[types.Part(text=text)]),
+            ],
         )
-        return response.text
+        return text
 
     def clear_history(self, channel_id: str) -> None:
         self._store.clear(channel_id)
