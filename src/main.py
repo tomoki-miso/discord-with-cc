@@ -46,7 +46,7 @@ def build_agent() -> AgentHandler:
 def main() -> None:
     agent = build_agent()
     history_store = HistoryStore()
-    tone_store = ToneStore()
+    tone_store = ToneStore(default=config.DEFAULT_TONE)
     calendar_store = CalendarStore()
     channel_store = ChannelStore()
     schedule_store = ScheduleStore()
@@ -62,13 +62,15 @@ def main() -> None:
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
     router.register("!channel", lambda ch, u, a: handle_channel(channel_store, ch, u, a))
 
-    async def on_mention(prompt: str, channel_id: str) -> str:
+    async def on_mention(prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
         if router.is_command(prompt):
             result = await router.dispatch(prompt, channel_id, "")
             return result or "不明なコマンドです"
         if not channel_store.is_allowed(channel_id):
             return "このチャンネルではbotは無効です"
-        return await agent.ask(prompt, channel_id)
+        tone = tone_store.get_effective(channel_id)
+        full_prompt = f"{tone}\n\n{prompt}" if tone else prompt
+        return await agent.ask(full_prompt, channel_id, images)
 
     async def send_scheduled(channel_id: str, message: str) -> None:
         response = await agent.ask(message, channel_id)

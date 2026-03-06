@@ -24,3 +24,19 @@ def test_clear_tone():
     store.set("ch1", "丁寧語")
     store.clear("ch1")
     assert store.get("ch1") == ""
+
+
+def test_get_effective_returns_channel_tone_if_set():
+    store = ToneStore(default="デフォルト人格")
+    store.set("ch1", "丁寧語で話してください")
+    assert store.get_effective("ch1") == "丁寧語で話してください"
+
+
+def test_get_effective_falls_back_to_default():
+    store = ToneStore(default="デフォルト人格")
+    assert store.get_effective("ch_unknown") == "デフォルト人格"
+
+
+def test_get_effective_empty_when_no_default():
+    store = ToneStore()
+    assert store.get_effective("ch1") == ""
