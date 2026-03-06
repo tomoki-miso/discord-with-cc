@@ -6,6 +6,8 @@ from src.stores.calendar import CalendarStore
 from src.stores.channel import ChannelStore
 from src.stores.schedule import ScheduleStore
 from src.stores.whimsy import WhimsyStore
+from src.stores.emoji import NoEmojiStore
+from src.stores.reaction import NoReactionStore
 from src.discord.reaction_handler import ReactionHandler
 from src.discord.splitter import split_message
 from src.commands.router import CommandRouter
@@ -14,6 +16,8 @@ from src.commands.tone import handle_tone
 from src.commands.calendar import handle_calendar
 from src.commands.channel import handle_channel
 from src.commands.whimsy import handle_whimsy
+from src.commands.emoji import handle_emoji
+from src.commands.reaction import handle_reaction
 from src.schedule.runner import ScheduleRunner
 from src.bot import create_bot
 
@@ -57,10 +61,12 @@ def main() -> None:
     channel_store = ChannelStore()
     schedule_store = ScheduleStore()
     whimsy_store = WhimsyStore()
+    no_emoji_store = NoEmojiStore()
+    no_reaction_store = NoReactionStore()
 
     # リアクションハンドラー
     reaction_agent = build_agent()
-    reaction_handler = ReactionHandler(agent=reaction_agent)
+    reaction_handler = ReactionHandler(agent=reaction_agent, store=no_reaction_store)
 
     # コマンドルーター
     router = CommandRouter()
@@ -69,6 +75,8 @@ def main() -> None:
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
     router.register("!channel", lambda ch, u, a: handle_channel(channel_store, ch, u, a))
     router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
+    router.register("!emoji", lambda ch, u, a: handle_emoji(no_emoji_store, ch, u, a))
+    router.register("!reaction", lambda ch, u, a: handle_reaction(no_reaction_store, ch, u, a))
 
     async def on_mention(prompt: str, channel_id: str, images: list[tuple[bytes, str]] | None = None) -> str:
         if router.is_command(prompt):
@@ -76,8 +84,13 @@ def main() -> None:
             return result or "不明なコマンドです"
         if not channel_store.is_allowed(channel_id):
             return "このチャンネルではbotは無効です"
+        instructions: list[str] = []
         tone = tone_store.get_effective(channel_id)
-        full_prompt = f"{tone}\n\n{prompt}" if tone else prompt
+        if tone:
+            instructions.append(tone)
+        if no_emoji_store.is_disabled(channel_id):
+            instructions.append("絵文字は使わないでください。")
+        full_prompt = "\n".join(instructions) + "\n\n" + prompt if instructions else prompt
         return await agent.ask(full_prompt, channel_id, images)
 
     async def send_scheduled(channel_id: str, message: str) -> None:

@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
+from src.discord.url_shortener import shorten_url
 
 
 _MAX_URL_LEN = 500
@@ -64,7 +65,11 @@ class GeminiAgent(AgentHandler):
                         if len(uri) <= _MAX_URL_LEN:
                             sources.append(f"- [{title}](<{uri}>)")
                         else:
-                            sources.append(f"- {title}")
+                            short_url = shorten_url(uri)
+                            if short_url:
+                                sources.append(f"- [{title}](<{short_url}>)")
+                            else:
+                                sources.append(f"- {title}")
 
                 if sources:
                     text += "\n\n**参考:**\n" + "\n".join(sources)

@@ -1,6 +1,7 @@
 import time
 import re
 from src.agents.base import AgentHandler
+from src.stores.reaction import NoReactionStore
 
 REACTION_PROMPT = """以下のメッセージに対して、最も適切な絵文字を1つだけ返してください。
 リアクション不要と判断した場合は「なし」と返してください。
@@ -15,8 +16,14 @@ EMOJI_PATTERN = re.compile(
 
 
 class ReactionHandler:
-    def __init__(self, agent: AgentHandler, rate_limit_seconds: float = 3.0) -> None:
+    def __init__(
+        self,
+        agent: AgentHandler,
+        store: NoReactionStore | None = None,
+        rate_limit_seconds: float = 3.0,
+    ) -> None:
         self._agent = agent
+        self._store = store
         self._rate_limit = rate_limit_seconds
         self._last_reaction: dict[str, float] = {}
 
@@ -25,6 +32,9 @@ class ReactionHandler:
             return
 
         channel_id = str(getattr(getattr(message, "channel", None), "id", ""))
+        if self._store and self._store.is_disabled(channel_id):
+            return
+
         now = time.monotonic()
         if now - self._last_reaction.get(channel_id, 0) < self._rate_limit:
             return
