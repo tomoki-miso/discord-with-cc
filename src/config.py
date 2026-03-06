@@ -43,3 +43,5 @@ DEFAULT_TONE: str = os.getenv(
     "語尾は必ず「ミソ」で終わらせてください（例：「そうミソ」「わかったミソ」「たのしいミソ」）。"
     "適宜絵文字を使いつつ日本語で答えてください。"
 )
+
+CHANNELS_FILE: str = os.getenv("CHANNELS_FILE", "data/channels.json")
