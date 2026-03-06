@@ -68,3 +68,26 @@ async def test_responds_to_mention():
     with patch.object(type(bot._client), "user", new_callable=PropertyMock, return_value=bot_user):
         await bot._on_message_handler(mock_msg)
     send_fn.assert_called_once()
+
+
+async def test_whimsy_callback_called_on_non_mention():
+    from src.bot import create_bot
+    from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+
+    on_mention = AsyncMock(return_value="応答")
+    on_message = AsyncMock()
+    on_random = AsyncMock()
+    bot = create_bot(on_mention=on_mention, on_message=on_message, on_random_message=on_random)
+
+    mock_msg = MagicMock()
+    mock_msg.author.bot = False
+    mock_msg.content = "hello"
+    mock_msg.mentions = []
+    mock_msg.attachments = []
+
+    bot_user = MagicMock()
+    bot_user.id = 123
+    with patch.object(type(bot._client), "user", new_callable=PropertyMock, return_value=bot_user):
+        await bot._on_message_handler(mock_msg)
+
+    on_random.assert_called_once_with(mock_msg)

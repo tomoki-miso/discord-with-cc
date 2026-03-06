@@ -7,6 +7,7 @@ from src.discord.splitter import split_message
 OnMentionFn = Callable[[str, str, "list[tuple[bytes, str]] | None"], Awaitable[str]]
 OnMessageFn = Callable[[object], Awaitable[None]]
 OnReadyFn = Callable[[], Awaitable[None]]
+OnRandomMessageFn = Callable[[object], Awaitable[None]]
 
 
 class DiscordBot:
@@ -15,6 +16,7 @@ class DiscordBot:
         on_mention: OnMentionFn,
         on_message: OnMessageFn,
         on_ready: OnReadyFn | None = None,
+        on_random_message: OnRandomMessageFn | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -22,6 +24,7 @@ class DiscordBot:
         self._on_mention = on_mention
         self._on_message_reaction = on_message
         self._on_ready_cb = on_ready
+        self._on_random_message = on_random_message
         self._setup_events()
 
     def _setup_events(self) -> None:
@@ -43,6 +46,8 @@ class DiscordBot:
 
         # メンション処理
         if self._client.user not in message.mentions:
+            if self._on_random_message:
+                asyncio.create_task(self._on_random_message(message))
             return
 
         prompt = re.sub(r"<@!?\d+>", "", message.content).strip()
@@ -71,5 +76,11 @@ def create_bot(
     on_mention: OnMentionFn,
     on_message: OnMessageFn,
     on_ready: OnReadyFn | None = None,
+    on_random_message: OnRandomMessageFn | None = None,
 ) -> DiscordBot:
-    return DiscordBot(on_mention=on_mention, on_message=on_message, on_ready=on_ready)
+    return DiscordBot(
+        on_mention=on_mention,
+        on_message=on_message,
+        on_ready=on_ready,
+        on_random_message=on_random_message,
+    )
