@@ -5,12 +5,15 @@ from src.stores.tone import ToneStore
 from src.stores.calendar import CalendarStore
 from src.stores.channel import ChannelStore
 from src.stores.schedule import ScheduleStore
+from src.stores.whimsy import WhimsyStore
 from src.discord.reaction_handler import ReactionHandler
+from src.discord.splitter import split_message
 from src.commands.router import CommandRouter
 from src.commands.clear import handle_clear
 from src.commands.tone import handle_tone
 from src.commands.calendar import handle_calendar
 from src.commands.channel import handle_channel
+from src.commands.whimsy import handle_whimsy
 from src.schedule.runner import ScheduleRunner
 from src.bot import create_bot
 
@@ -44,12 +47,16 @@ def build_agent() -> AgentHandler:
 
 
 def main() -> None:
+    import random
+    WHIMSY_PROBABILITY = 0.20
+
     agent = build_agent()
     history_store = HistoryStore()
     tone_store = ToneStore()
     calendar_store = CalendarStore()
     channel_store = ChannelStore()
     schedule_store = ScheduleStore()
+    whimsy_store = WhimsyStore()
 
     # リアクションハンドラー
     reaction_agent = build_agent()
@@ -61,8 +68,9 @@ def main() -> None:
     router.register("!tone", lambda ch, u, a: handle_tone(tone_store, ch, u, a))
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
     router.register("!channel", lambda ch, u, a: handle_channel(channel_store, ch, u, a))
+    router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
 
-    async def on_mention(prompt: str, channel_id: str) -> str:
+    async def on_mention(prompt: str, channel_id: str, images: "list[tuple[bytes, str]] | None" = None) -> str:
         if router.is_command(prompt):
             result = await router.dispatch(prompt, channel_id, "")
             return result or "不明なコマンドです"
@@ -76,6 +84,21 @@ def main() -> None:
 
     schedule_runner = ScheduleRunner(send_message=send_scheduled, store=schedule_store)
 
+    async def on_random_message(message: object) -> None:
+        channel_id = str(getattr(getattr(message, "channel", None), "id", ""))
+        if not whimsy_store.is_enabled(channel_id):
+            return
+        if random.random() >= WHIMSY_PROBABILITY:
+            return
+        content = getattr(message, "content", "").strip()
+        if not content:
+            return
+        response = await agent.ask(content, channel_id)
+        channel = getattr(message, "channel", None)
+        if channel:
+            for part in split_message(response):
+                await channel.send(part)
+
     async def on_ready() -> None:
         schedule_runner.start()
 
@@ -83,6 +106,7 @@ def main() -> None:
         on_mention=on_mention,
         on_message=reaction_handler.handle,
         on_ready=on_ready,
+        on_random_message=on_random_message,
     )
     bot.run(config.DISCORD_TOKEN)
 
