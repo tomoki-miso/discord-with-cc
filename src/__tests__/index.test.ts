@@ -74,6 +74,24 @@ vi.mock("../discord/slash-register.js", () => ({
   registerSlashCommands: mockRegisterSlashCommands,
 }));
 
+vi.mock("../schedule-store.js", () => ({
+  createScheduleStore: vi.fn(() => ({
+    list: vi.fn(() => []),
+    add: vi.fn(),
+    remove: vi.fn(),
+    updateNextRun: vi.fn(),
+    findDue: vi.fn(() => []),
+  })),
+}));
+
+vi.mock("../schedule-runner.js", () => ({
+  createScheduleRunner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
+}));
+
+vi.mock("../commands/schedule.js", () => ({
+  handleScheduleCommand: vi.fn(() => ""),
+}));
+
 const MOCKED_ENV_KEYS = [
   "DISCORD_TOKEN",
   "DISCORD_CLIENT_ID",
@@ -90,6 +108,7 @@ const MOCKED_ENV_KEYS = [
 async function importIndexWithEnv(overrides: Record<string, string | undefined> = {}) {
   vi.resetModules();
   vi.clearAllMocks();
+  mockCreateBot.mockReturnValue({ once: vi.fn() });
   const backups: Record<string, string | undefined> = {};
   for (const key of MOCKED_ENV_KEYS) {
     backups[key] = process.env[key];

@@ -597,6 +597,98 @@ describe("createBot", () => {
       expect(interaction.reply).toHaveBeenCalledWith({ content: "常時応答モードに設定しました。" });
     });
 
+    it("should handle /schedule add subcommand", async () => {
+      // Given: a bot with onScheduleCommand
+      const onScheduleCommand = vi.fn().mockReturnValue("スケジュールを登録しました。");
+      createBot({ token: "test-token", onMessage, onScheduleCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "schedule",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("add"),
+          getString: vi.fn((name: string) => {
+            if (name === "expression") return "毎朝9時";
+            if (name === "prompt") return "天気を教えて";
+            return null;
+          }),
+        },
+      });
+
+      // When: a /schedule add interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onScheduleCommand called with add sub and options
+      expect(onScheduleCommand).toHaveBeenCalledWith(
+        "add",
+        { expression: "毎朝9時", prompt: "天気を教えて" },
+        "channel-123",
+      );
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "スケジュールを登録しました。" });
+    });
+
+    it("should handle /schedule list subcommand", async () => {
+      // Given: a bot with onScheduleCommand
+      const onScheduleCommand = vi.fn().mockReturnValue("スケジュール一覧");
+      createBot({ token: "test-token", onMessage, onScheduleCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "schedule",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("list"),
+          getString: vi.fn().mockReturnValue(null),
+        },
+      });
+
+      // When: a /schedule list interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onScheduleCommand called with list sub and empty options
+      expect(onScheduleCommand).toHaveBeenCalledWith("list", {}, "channel-123");
+    });
+
+    it("should handle /schedule delete subcommand", async () => {
+      // Given: a bot with onScheduleCommand
+      const onScheduleCommand = vi.fn().mockReturnValue("スケジュールを削除しました。");
+      createBot({ token: "test-token", onMessage, onScheduleCommand });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "schedule",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("delete"),
+          getString: vi.fn((name: string) => name === "id" ? "550e8400" : null),
+        },
+      });
+
+      // When: a /schedule delete interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: onScheduleCommand called with delete sub and id
+      expect(onScheduleCommand).toHaveBeenCalledWith("delete", { id: "550e8400" }, "channel-123");
+    });
+
+    it("should reply with fallback when onScheduleCommand is not set", async () => {
+      // Given: a bot without onScheduleCommand
+      createBot({ token: "test-token", onMessage });
+      const interactionHandler = getInteractionCreateHandler();
+      const interaction = createMockInteraction({
+        commandName: "schedule",
+        options: {
+          getSubcommand: vi.fn().mockReturnValue("list"),
+          getString: vi.fn().mockReturnValue(null),
+        },
+      });
+
+      // When: a /schedule interaction arrives
+      interactionHandler(interaction);
+      await vi.waitFor(() => expect(interaction.reply).toHaveBeenCalled());
+
+      // Then: fallback message is returned
+      expect(interaction.reply).toHaveBeenCalledWith({ content: "schedule コマンドは設定されていません。" });
+    });
+
     it("should ignore non-chat-input-command interactions", () => {
       // Given: a bot and a non-slash-command interaction
       createBot({ token: "test-token", onMessage });
