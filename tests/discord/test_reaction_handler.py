@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from src.discord.reaction_handler import ReactionHandler
+from src.stores.reaction import NoReactionStore
 
 
 @pytest.fixture
@@ -38,6 +39,41 @@ async def test_skips_when_no_reaction(handler):
     await handler.handle(mock_message)
 
     mock_message.add_reaction.assert_not_called()
+
+
+async def test_skips_when_reaction_disabled_for_channel():
+    # Given: ch1 でリアクション無効
+    mock_agent = MagicMock()
+    mock_agent.ask = AsyncMock(return_value="👍")
+    store = NoReactionStore()
+    store.disable("ch1")
+    handler = ReactionHandler(agent=mock_agent, store=store, rate_limit_seconds=0)
+
+    mock_message = AsyncMock()
+    mock_message.content = "こんにちはミソ"
+    mock_message.author.bot = False
+    mock_message.channel.id = "ch1"
+
+    await handler.handle(mock_message)
+
+    mock_message.add_reaction.assert_not_called()
+
+
+async def test_reacts_when_reaction_enabled_for_channel():
+    # Given: ch1 でリアクション有効（デフォルト）
+    mock_agent = MagicMock()
+    mock_agent.ask = AsyncMock(return_value="👍")
+    store = NoReactionStore()
+    handler = ReactionHandler(agent=mock_agent, store=store, rate_limit_seconds=0)
+
+    mock_message = AsyncMock()
+    mock_message.content = "こんにちはミソ"
+    mock_message.author.bot = False
+    mock_message.channel.id = "ch1"
+
+    await handler.handle(mock_message)
+
+    mock_message.add_reaction.assert_called_once()
 
 
 async def test_rate_limit_prevents_spam():

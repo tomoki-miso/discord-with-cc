@@ -160,8 +160,31 @@ async def test_google_search_tool_configured(agent):
     )
 
 
-async def test_long_url_shown_without_link(agent):
-    # Given: 500文字を超えるURL（Vertex AI リダイレクトURL模倣）
+async def test_long_url_shortened_when_shortener_succeeds(agent):
+    # Given: 500文字を超えるURL（Vertex AI リダイレクトURL模倣）で短縮成功
+    mock_chat = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "応答テキスト"
+    chunk = MagicMock()
+    long_uri = "https://vertexaisearch.cloud.google.com/" + "a-k" * 200
+    chunk.web.uri = long_uri
+    chunk.web.title = "長いURLのサイト"
+    mock_response.candidates[0].grounding_metadata.grounding_chunks = [chunk]
+    mock_chat.send_message.return_value = mock_response
+    agent._client.chats.create.return_value = mock_chat
+
+    with patch("src.agents.gemini.shorten_url", return_value="https://tinyurl.com/abc123"):
+        result = await agent.ask("何か？", "ch1")
+
+    # Then: 短縮URLでリンク表示される
+    assert "**参考:**" in result
+    assert "長いURLのサイト" in result
+    assert "tinyurl.com/abc123" in result
+    assert long_uri not in result
+
+
+async def test_long_url_shown_without_link_when_shortener_fails(agent):
+    # Given: 500文字を超えるURLで短縮失敗
     mock_chat = MagicMock()
     mock_response = MagicMock()
     mock_response.text = "応答テキスト"
@@ -172,9 +195,10 @@ async def test_long_url_shown_without_link(agent):
     mock_chat.send_message.return_value = mock_response
     agent._client.chats.create.return_value = mock_chat
 
-    result = await agent.ask("何か？", "ch1")
+    with patch("src.agents.gemini.shorten_url", return_value=None):
+        result = await agent.ask("何か？", "ch1")
 
-    # Then: タイトルは表示、URLはリンクにならない
+    # Then: タイトルのみ表示（フォールバック）
     assert "**参考:**" in result
     assert "長いURLのサイト" in result
     assert "vertexaisearch.cloud.google.com" not in result
