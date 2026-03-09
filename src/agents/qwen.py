@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any
 from qwen_agent.agents import Assistant
 from src.agents.base import AgentHandler
@@ -57,3 +58,18 @@ class QwenAgent(AgentHandler):
 
     def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
         self._history[channel_id] = list(messages)
+
+    async def score_context(self, message: str) -> int:
+        prompt = (
+            "以下のメッセージが AI アシスタント (Bot) への問いかけ・質問・依頼である"
+            "可能性を 0 から 10 の整数で評価してください。数字のみ返してください。\n"
+            f"メッセージ: {message}"
+        )
+        messages = [{"role": "user", "content": prompt}]
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, self._run_sync, messages)
+        try:
+            m = re.search(r"\d+", result)
+            return max(0, min(10, int(m.group()))) if m else 0
+        except (ValueError, AttributeError):
+            return 0

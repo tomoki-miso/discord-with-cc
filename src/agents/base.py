@@ -16,3 +16,8 @@ class AgentHandler(ABC):
     def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
         """指定チャンネルの履歴を外部から上書きする"""
         ...
+
+    @abstractmethod
+    async def score_context(self, message: str) -> int:
+        """メッセージが Bot への問いかけである可能性を 0〜10 の整数で返す。"""
+        ...

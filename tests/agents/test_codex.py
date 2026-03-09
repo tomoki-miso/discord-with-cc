@@ -19,3 +19,20 @@ async def test_ask_calls_subprocess(agent):
 
 def test_clear_history_is_noop(agent):
     agent.clear_history("ch1")
+
+
+async def test_score_context_returns_7_on_keyword_match(agent):
+    # Given: キーワード "教えて" を含むメッセージ
+    result = await agent.score_context("ねえ教えてよ")
+    assert result == 7
+
+
+async def test_score_context_returns_7_on_question_mark(agent):
+    result = await agent.score_context("これってどういうこと?")
+    assert result == 7
+
+
+async def test_score_context_returns_0_on_no_keyword(agent):
+    # Given: Bot への問いかけキーワードなし
+    result = await agent.score_context("今日もいい天気だね")
+    assert result == 0
