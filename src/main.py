@@ -59,7 +59,7 @@ def main() -> None:
     history_store = HistoryStore()
     tone_store = ToneStore(default=config.DEFAULT_TONE)
     calendar_store = CalendarStore()
-schedule_store = ScheduleStore()
+    schedule_store = ScheduleStore()
     whimsy_store = WhimsyStore()
     no_emoji_store = NoEmojiStore()
     no_reaction_store = NoReactionStore()
@@ -73,7 +73,7 @@ schedule_store = ScheduleStore()
     router.register("!clear", lambda ch, u, a: handle_clear(history_store, ch, u, a))
     router.register("!tone", lambda ch, u, a: handle_tone(tone_store, ch, u, a))
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
-router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
+    router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
     router.register("!emoji", lambda ch, u, a: handle_emoji(no_emoji_store, ch, u, a))
     router.register("!reaction", lambda ch, u, a: handle_reaction(no_reaction_store, ch, u, a))
 
@@ -81,7 +81,7 @@ router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a
         if router.is_command(prompt):
             result = await router.dispatch(prompt, channel_id, "")
             return result or "不明なコマンドです"
-instructions: list[str] = []
+        instructions: list[str] = []
         tone = tone_store.get_effective(channel_id)
         if tone:
             instructions.append(tone)
