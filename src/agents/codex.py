@@ -21,3 +21,8 @@ class CodexAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         pass  # stateless
+
+    async def score_context(self, message: str) -> int:
+        keywords = ["教えて", "できる", "どう", "なに", "何", "?", "？", "help", "please", "して", "方法"]
+        content = message.lower()
+        return 7 if any(kw in content for kw in keywords) else 0

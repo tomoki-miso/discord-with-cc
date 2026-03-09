@@ -20,6 +20,9 @@ from src.commands.emoji import handle_emoji
 from src.commands.reaction import handle_reaction
 from src.schedule.runner import ScheduleRunner
 from src.bot import create_bot
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def build_agent() -> AgentHandler:
@@ -101,11 +104,28 @@ def main() -> None:
 
     async def on_random_message(message: object) -> None:
         channel_id = str(getattr(getattr(message, "channel", None), "id", ""))
+        content = getattr(message, "content", "").strip()
+
+        # --- 文脈的言及検出（許可チャンネルのみ）---
+        if channel_store.is_allowed(channel_id) and content:
+            try:
+                score = await agent.score_context(content)
+                if score >= config.CONTEXT_SCORE_THRESHOLD:
+                    channel = getattr(message, "channel", None)
+                    if channel:
+                        async with channel.typing():
+                            response = await agent.ask(content, channel_id)
+                        for part in split_message(response):
+                            await channel.send(part)
+                    return
+            except Exception as e:
+                logger.warning("score_context failed: %s", e)
+
+        # --- Whimsy ロジック ---
         if not whimsy_store.is_enabled(channel_id):
             return
         if random.random() >= WHIMSY_PROBABILITY:
             return
-        content = getattr(message, "content", "").strip()
         if not content:
             return
         response = await agent.ask(content, channel_id)

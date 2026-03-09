@@ -14,6 +14,9 @@ class ConcreteAgent(AgentHandler):
     def clear_history(self, channel_id: str) -> None:
         pass
 
+    async def score_context(self, message: str) -> int:
+        return 0
+
 
 async def test_concrete_agent_works():
     agent = ConcreteAgent()

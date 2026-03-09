@@ -51,3 +51,24 @@ class ClaudeAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         self._store.clear(channel_id)
+
+    async def score_context(self, message: str) -> int:
+        prompt = (
+            "以下のメッセージが AI アシスタント (Bot) への問いかけ・質問・依頼である"
+            "可能性を 0 から 10 の整数で評価してください。数字のみ返してください。\n"
+            "0=Bot への言及なし  5=曖昧  10=明確な質問・依頼\n"
+            f"メッセージ: {message}"
+        )
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: self._client.messages.create(
+                model=self._model,
+                max_tokens=5,
+                messages=[{"role": "user", "content": prompt}],
+            ),
+        )
+        try:
+            return max(0, min(10, int(response.content[0].text.strip())))
+        except (ValueError, IndexError):
+            return 0

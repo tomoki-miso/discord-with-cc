@@ -45,3 +45,5 @@ DEFAULT_TONE: str = os.getenv(
 )
 
 CHANNELS_FILE: str = os.getenv("CHANNELS_FILE", "data/channels.json")
+
+CONTEXT_SCORE_THRESHOLD: int = int(os.getenv("CONTEXT_SCORE_THRESHOLD", "5"))

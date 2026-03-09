@@ -202,3 +202,36 @@ async def test_long_url_shown_without_link_when_shortener_fails(agent):
     assert "**参考:**" in result
     assert "長いURLのサイト" in result
     assert "vertexaisearch.cloud.google.com" not in result
+
+
+async def test_score_context_returns_integer(agent):
+    # Given: models.generate_content が "8" を返す
+    mock_response = MagicMock()
+    mock_response.text = "8"
+    agent._client.models.generate_content.return_value = mock_response
+
+    result = await agent.score_context("これを教えてください")
+
+    assert result == 8
+
+
+async def test_score_context_clamps_to_range(agent):
+    # Given: LLM が範囲外の値を返す
+    mock_response = MagicMock()
+    mock_response.text = "-5"
+    agent._client.models.generate_content.return_value = mock_response
+
+    result = await agent.score_context("hello")
+
+    assert result == 0
+
+
+async def test_score_context_returns_zero_on_invalid(agent):
+    # Given: LLM が数値以外を返す
+    mock_response = MagicMock()
+    mock_response.text = "unknown"
+    agent._client.models.generate_content.return_value = mock_response
+
+    result = await agent.score_context("hello")
+
+    assert result == 0

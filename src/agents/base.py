@@ -11,3 +11,8 @@ class AgentHandler(ABC):
     def clear_history(self, channel_id: str) -> None:
         """指定チャンネルの履歴をクリアする"""
         ...
+
+    @abstractmethod
+    async def score_context(self, message: str) -> int:
+        """メッセージが Bot への問いかけである可能性を 0〜10 の整数で返す。"""
+        ...
