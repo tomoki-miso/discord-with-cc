@@ -4,7 +4,6 @@ from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
 from src.stores.tone import ToneStore
 from src.stores.calendar import CalendarStore
-from src.stores.channel import ChannelStore
 from src.stores.schedule import ScheduleStore
 from src.stores.whimsy import WhimsyStore
 from src.stores.emoji import NoEmojiStore
@@ -15,7 +14,6 @@ from src.commands.router import CommandRouter
 from src.commands.clear import handle_clear
 from src.commands.tone import handle_tone
 from src.commands.calendar import handle_calendar
-from src.commands.channel import handle_channel
 from src.commands.whimsy import handle_whimsy
 from src.commands.emoji import handle_emoji
 from src.commands.reaction import handle_reaction
@@ -61,8 +59,7 @@ def main() -> None:
     history_store = HistoryStore()
     tone_store = ToneStore(default=config.DEFAULT_TONE)
     calendar_store = CalendarStore()
-    channel_store = ChannelStore(path=config.CHANNELS_FILE)
-    schedule_store = ScheduleStore()
+schedule_store = ScheduleStore()
     whimsy_store = WhimsyStore()
     no_emoji_store = NoEmojiStore()
     no_reaction_store = NoReactionStore()
@@ -76,8 +73,7 @@ def main() -> None:
     router.register("!clear", lambda ch, u, a: handle_clear(history_store, ch, u, a))
     router.register("!tone", lambda ch, u, a: handle_tone(tone_store, ch, u, a))
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
-    router.register("!channel", lambda ch, u, a: handle_channel(channel_store, ch, u, a))
-    router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
+router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
     router.register("!emoji", lambda ch, u, a: handle_emoji(no_emoji_store, ch, u, a))
     router.register("!reaction", lambda ch, u, a: handle_reaction(no_reaction_store, ch, u, a))
 
@@ -85,9 +81,7 @@ def main() -> None:
         if router.is_command(prompt):
             result = await router.dispatch(prompt, channel_id, "")
             return result or "不明なコマンドです"
-        if not channel_store.is_allowed(channel_id):
-            return "このチャンネルではbotは無効です"
-        instructions: list[str] = []
+instructions: list[str] = []
         tone = tone_store.get_effective(channel_id)
         if tone:
             instructions.append(tone)
@@ -107,8 +101,8 @@ def main() -> None:
         channel_id = str(getattr(channel, "id", ""))
         content = getattr(message, "content", "").strip()
 
-        # --- 文脈的言及検出（許可チャンネルのみ）---
-        if channel_store.is_allowed(channel_id) and content:
+        # --- 文脈的言及検出 ---
+        if content:
             try:
                 score = await agent.score_context(content)
                 if score >= config.CONTEXT_SCORE_THRESHOLD:
