@@ -21,3 +21,6 @@ class CodexAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         pass  # stateless
+
+    def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
+        pass  # stateless

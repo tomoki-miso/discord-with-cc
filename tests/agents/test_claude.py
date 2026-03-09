@@ -37,6 +37,15 @@ async def test_clear_history(agent):
     assert agent._store.get("ch1") == []
 
 
+async def test_set_history(agent):
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+    agent.set_history("ch1", messages)
+    assert agent._store.get("ch1") == messages
+
+
 async def test_ask_with_images(agent):
     # Given: 画像付きメッセージ
     mock_message = MagicMock()

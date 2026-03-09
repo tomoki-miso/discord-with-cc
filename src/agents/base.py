@@ -11,3 +11,8 @@ class AgentHandler(ABC):
     def clear_history(self, channel_id: str) -> None:
         """指定チャンネルの履歴をクリアする"""
         ...
+
+    @abstractmethod
+    def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
+        """指定チャンネルの履歴を外部から上書きする"""
+        ...

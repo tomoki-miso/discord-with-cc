@@ -94,3 +94,13 @@ class GeminiAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         self._store.clear(channel_id)
+
+    def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
+        converted = [
+            types.Content(
+                role="model" if msg["role"] == "assistant" else "user",
+                parts=[types.Part(text=msg["content"])],
+            )
+            for msg in messages
+        ]
+        self._store.set(channel_id, converted)

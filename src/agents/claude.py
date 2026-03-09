@@ -51,3 +51,6 @@ class ClaudeAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         self._store.clear(channel_id)
+
+    def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
+        self._store.set(channel_id, messages)

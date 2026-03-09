@@ -27,3 +27,12 @@ async def test_clear_history(agent):
     agent._history["ch1"] = [{"role": "user", "content": "test"}]
     agent.clear_history("ch1")
     assert agent._history.get("ch1") is None
+
+
+async def test_set_history(agent):
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+    agent.set_history("ch1", messages)
+    assert agent._history["ch1"] == messages

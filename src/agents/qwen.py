@@ -54,3 +54,6 @@ class QwenAgent(AgentHandler):
 
     def clear_history(self, channel_id: str) -> None:
         self._history.pop(channel_id, None)
+
+    def set_history(self, channel_id: str, messages: list[dict[str, str]]) -> None:
+        self._history[channel_id] = list(messages)

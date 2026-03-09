@@ -3,7 +3,6 @@ from src.agents.base import AgentHandler
 from src.stores.history import HistoryStore
 from src.stores.tone import ToneStore
 from src.stores.calendar import CalendarStore
-from src.stores.channel import ChannelStore
 from src.stores.schedule import ScheduleStore
 from src.stores.whimsy import WhimsyStore
 from src.stores.emoji import NoEmojiStore
@@ -14,7 +13,6 @@ from src.commands.router import CommandRouter
 from src.commands.clear import handle_clear
 from src.commands.tone import handle_tone
 from src.commands.calendar import handle_calendar
-from src.commands.channel import handle_channel
 from src.commands.whimsy import handle_whimsy
 from src.commands.emoji import handle_emoji
 from src.commands.reaction import handle_reaction
@@ -58,8 +56,7 @@ def main() -> None:
     history_store = HistoryStore()
     tone_store = ToneStore(default=config.DEFAULT_TONE)
     calendar_store = CalendarStore()
-    channel_store = ChannelStore(path=config.CHANNELS_FILE)
-    schedule_store = ScheduleStore()
+schedule_store = ScheduleStore()
     whimsy_store = WhimsyStore()
     no_emoji_store = NoEmojiStore()
     no_reaction_store = NoReactionStore()
@@ -73,8 +70,7 @@ def main() -> None:
     router.register("!clear", lambda ch, u, a: handle_clear(history_store, ch, u, a))
     router.register("!tone", lambda ch, u, a: handle_tone(tone_store, ch, u, a))
     router.register("!calendar", lambda ch, u, a: handle_calendar(calendar_store, ch, u, a))
-    router.register("!channel", lambda ch, u, a: handle_channel(channel_store, ch, u, a))
-    router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
+router.register("!whimsy", lambda ch, u, a: handle_whimsy(whimsy_store, ch, u, a))
     router.register("!emoji", lambda ch, u, a: handle_emoji(no_emoji_store, ch, u, a))
     router.register("!reaction", lambda ch, u, a: handle_reaction(no_reaction_store, ch, u, a))
 
@@ -82,9 +78,7 @@ def main() -> None:
         if router.is_command(prompt):
             result = await router.dispatch(prompt, channel_id, "")
             return result or "不明なコマンドです"
-        if not channel_store.is_allowed(channel_id):
-            return "このチャンネルではbotは無効です"
-        instructions: list[str] = []
+instructions: list[str] = []
         tone = tone_store.get_effective(channel_id)
         if tone:
             instructions.append(tone)
@@ -100,7 +94,8 @@ def main() -> None:
     schedule_runner = ScheduleRunner(send_message=send_scheduled, store=schedule_store)
 
     async def on_random_message(message: object) -> None:
-        channel_id = str(getattr(getattr(message, "channel", None), "id", ""))
+        channel = getattr(message, "channel", None)
+        channel_id = str(getattr(channel, "id", ""))
         if not whimsy_store.is_enabled(channel_id):
             return
         if random.random() >= WHIMSY_PROBABILITY:
@@ -108,8 +103,26 @@ def main() -> None:
         content = getattr(message, "content", "").strip()
         if not content:
             return
+
+        # 直近10件のチャンネル履歴を会話コンテキストとして注入
+        if channel:
+            past: list[dict[str, str]] = []
+            async for msg in channel.history(limit=10, before=message):
+                is_bot = getattr(getattr(msg, "author", None), "bot", False)
+                msg_content = getattr(msg, "content", "").strip()
+                if not msg_content:
+                    continue
+                past.insert(0, {"role": "assistant" if is_bot else "user", "content": msg_content})
+            # Claude API の制約: 連続する同ロールを結合
+            merged: list[dict[str, str]] = []
+            for entry in past:
+                if merged and merged[-1]["role"] == entry["role"]:
+                    merged[-1]["content"] += "\n" + entry["content"]
+                else:
+                    merged.append(entry)
+            agent.set_history(channel_id, merged)
+
         response = await agent.ask(content, channel_id)
-        channel = getattr(message, "channel", None)
         if channel:
             for part in split_message(response):
                 await channel.send(part)

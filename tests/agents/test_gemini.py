@@ -84,6 +84,25 @@ async def test_clear_history(agent):
     assert agent._store.get("ch1") == []
 
 
+async def test_set_history_converts_to_content(agent):
+    # Given: dict 形式のメッセージ
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+    # When: set_history で注入
+    agent.set_history("ch1", messages)
+
+    history = agent._store.get("ch1")
+    # Then: types.Content に変換されている
+    assert len(history) == 2
+    assert history[0].role == "user"
+    assert history[1].role == "model"  # assistant -> model
+    assert history[0].parts[0].text == "hi"
+    assert history[1].parts[0].text == "hello"
+
+
 async def test_citations_appended_when_grounding_present(agent):
     # Given: グラウンディングメタデータ付きのレスポンス
     mock_chat = MagicMock()
